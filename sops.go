@@ -63,6 +63,39 @@ import (
 // DefaultUnencryptedSuffix is the default suffix a TreeItem key has to end with for sops to leave its Value unencrypted
 const DefaultUnencryptedSuffix = "_unencrypted"
 
+// Directive represents an encryption directive that may appear in a comment
+// preceding a tree item. Directives override suffix and regex rules and let
+// users mark individual fields as encrypted or unencrypted without having to
+// rename the field. The directive is the comment's exact text after trimming
+// surrounding whitespace and lower-casing.
+type Directive int
+
+const (
+	// DirectiveNone means the comment is not a sops directive.
+	DirectiveNone Directive = iota
+	// DirectiveUnencrypted marks the next non-comment item (and all of its
+	// descendants) as unencrypted. Source form: "sops:unencrypted".
+	DirectiveUnencrypted
+	// DirectiveEncrypted marks the next non-comment item (and all of its
+	// descendants) as encrypted. Source form: "sops:encrypted".
+	DirectiveEncrypted
+)
+
+// ParseDirective recognizes a directive in a comment value. The value is the
+// raw comment text without its leading marker (e.g. "#" stripped by the store
+// layer). Matching is case-insensitive and tolerates surrounding whitespace,
+// so "# sops:unencrypted", "//sops:encrypted", and "#  SOPS:UNENCRYPTED  "
+// all work.
+func ParseDirective(commentValue string) Directive {
+	switch strings.ToLower(strings.TrimSpace(commentValue)) {
+	case "sops:unencrypted":
+		return DirectiveUnencrypted
+	case "sops:encrypted":
+		return DirectiveEncrypted
+	}
+	return DirectiveNone
+}
+
 var DefaultDecryptionOrder = []string{age.KeyTypeIdentifier, pgp.KeyTypeIdentifier}
 
 type sopsError string
@@ -505,6 +538,41 @@ func (tree Tree) shouldBeEncrypted(path []string, commentsStack [][]string, isCo
 			}
 		}
 	}
+	// Directives override every preceding rule. They are the most explicit
+	// form of intent and so win over suffix / regex / comment-regex matches.
+	// Order: walk outermost → innermost; later directives override earlier
+	// ones, so the closest directive (innermost, most-recent) is the one
+	// that takes effect. A directive comment is itself never encrypted —
+	// otherwise the directive would not be parseable on disk.
+	{
+		lenCS := len(commentsStack)
+		var lenLast int
+		if lenCS > 0 {
+			lenLast = len(commentsStack[lenCS-1])
+		}
+		// Rule 1: a directive comment is always unencrypted.
+		if isComment && lenCS > 0 && lenLast > 0 {
+			if ParseDirective(commentsStack[lenCS-1][lenLast-1]) != DirectiveNone {
+				return false
+			}
+		}
+		// Rule 2: directives in scope override prior decisions.
+		for i, cs := range commentsStack {
+			for j, c := range cs {
+				if isComment && i == lenCS-1 && j == lenLast-1 {
+					// We are processing the directive comment itself; rule 1
+					// covered it. Skip so it does not flip the decision.
+					continue
+				}
+				switch ParseDirective(c) {
+				case DirectiveUnencrypted:
+					encrypted = false
+				case DirectiveEncrypted:
+					encrypted = true
+				}
+			}
+		}
+	}
 	return encrypted
 }
 
@@ -517,6 +585,11 @@ func (tree Tree) shouldBeEncrypted(path []string, commentsStack [][]string, isCo
 // not matching EncryptedCommentRegex, if EncryptedCommentRegex is provided (by default
 // it is not), or those with their comment matching UnencryptedCommentRegex, if
 // UnencryptedCommentRegex is provided (by default it is not).
+//
+// In addition, an item is left unencrypted (or forced encrypted) when the
+// immediately preceding comment carries a sops directive of the form
+// "sops:unencrypted" or "sops:encrypted". Directives apply to the next non-comment
+// item and to all of its descendants and override the suffix / regex rules above.
 // If encryption is successful, it returns the MAC for the encrypted tree
 // (all values if MACOnlyEncrypted is false, or only over values which end
 // up encrypted if MACOnlyEncrypted is true).
@@ -579,6 +652,11 @@ func (tree Tree) Encrypt(key []byte, cipher Cipher) (string, error) {
 // those not ending with EncryptedSuffix, if EncryptedSuffix is provided (by default it is not),
 // those not matching EncryptedRegex, if EncryptedRegex is provided (by default it is not),
 // or those matching UnencryptedRegex, if UnencryptedRegex is provided (by default it is not).
+//
+// As with Encrypt, an item is treated as unencrypted (or forced encrypted) when the
+// immediately preceding comment carries a sops directive of the form
+// "sops:unencrypted" or "sops:encrypted". Directives apply to the next non-comment
+// item and to all of its descendants and override the suffix / regex rules above.
 // If decryption is successful, it returns the MAC for the decrypted tree
 // (all values if MACOnlyEncrypted is false, or only over values which end
 // up decrypted if MACOnlyEncrypted is true).
