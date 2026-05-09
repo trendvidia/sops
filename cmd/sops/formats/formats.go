@@ -11,14 +11,17 @@ const (
 	Ini
 	Json
 	Yaml
+	Protowire
 )
 
 var stringToFormat = map[string]Format{
-	"binary": Binary,
-	"dotenv": Dotenv,
-	"ini":    Ini,
-	"json":   Json,
-	"yaml":   Yaml,
+	"binary":    Binary,
+	"dotenv":    Dotenv,
+	"ini":       Ini,
+	"json":      Json,
+	"yaml":      Yaml,
+	"protowire": Protowire,
+	"pxf":       Protowire,
 }
 
 // FormatFromString returns a Format from a string.
@@ -51,6 +54,12 @@ func IsIniFile(path string) bool {
 	return strings.HasSuffix(path, ".ini")
 }
 
+// IsPXFFile returns true if a given file path corresponds to a PXF
+// (protowire text format) file.
+func IsPXFFile(path string) bool {
+	return strings.HasSuffix(path, ".pxf")
+}
+
 // FormatForPath returns the correct format given the path to a file
 func FormatForPath(path string) Format {
 	format := Binary // default
@@ -62,6 +71,8 @@ func FormatForPath(path string) Format {
 		format = Dotenv
 	} else if IsIniFile(path) {
 		format = Ini
+	} else if IsPXFFile(path) {
+		format = Protowire
 	}
 	return format
 }

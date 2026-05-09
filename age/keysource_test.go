@@ -609,7 +609,13 @@ func TestMasterKey_Identities_Passphrase(t *testing.T) {
 	t.Run(SopsAgeKeyEnv, func(t *testing.T) {
 		key := &MasterKey{EncryptedKey: mockEncryptedKey}
 		t.Setenv(SopsAgeKeyEnv, mockEncryptedIdentity)
-		//blocks calling gpg-agent
+		// Block calling gpg-agent. Unsetting XDG_RUNTIME_DIR is enough on
+		// Linux distros where ~/.gnupg/S.gpg-agent does not exist, but on
+		// macOS gpg-agent runs on that standard socket and gopgagent's
+		// auto-discovery picks it up regardless. Setting GPG_AGENT_INFO
+		// to a bogus path takes precedence and makes the connection fail,
+		// which is what triggers the testOnlyAgePassword fallback.
+		t.Setenv("GPG_AGENT_INFO", "/nonexistent/socket:0:1")
 		os.Unsetenv("XDG_RUNTIME_DIR")
 		testOnlyAgePassword = mockIdentityPassphrase
 		got, err := key.Decrypt()
@@ -629,7 +635,13 @@ func TestMasterKey_Identities_Passphrase(t *testing.T) {
 
 		key := &MasterKey{EncryptedKey: mockEncryptedKey}
 		t.Setenv(SopsAgeKeyFileEnv, keyPath)
-		//blocks calling gpg-agent
+		// Block calling gpg-agent. Unsetting XDG_RUNTIME_DIR is enough on
+		// Linux distros where ~/.gnupg/S.gpg-agent does not exist, but on
+		// macOS gpg-agent runs on that standard socket and gopgagent's
+		// auto-discovery picks it up regardless. Setting GPG_AGENT_INFO
+		// to a bogus path takes precedence and makes the connection fail,
+		// which is what triggers the testOnlyAgePassword fallback.
+		t.Setenv("GPG_AGENT_INFO", "/nonexistent/socket:0:1")
 		os.Unsetenv("XDG_RUNTIME_DIR")
 		testOnlyAgePassword = mockIdentityPassphrase
 
@@ -643,7 +655,13 @@ func TestMasterKey_Identities_Passphrase(t *testing.T) {
 	t.Run("invalid encrypted key", func(t *testing.T) {
 		key := &MasterKey{EncryptedKey: "invalid"}
 		t.Setenv(SopsAgeKeyEnv, mockEncryptedIdentity)
-		//blocks calling gpg-agent
+		// Block calling gpg-agent. Unsetting XDG_RUNTIME_DIR is enough on
+		// Linux distros where ~/.gnupg/S.gpg-agent does not exist, but on
+		// macOS gpg-agent runs on that standard socket and gopgagent's
+		// auto-discovery picks it up regardless. Setting GPG_AGENT_INFO
+		// to a bogus path takes precedence and makes the connection fail,
+		// which is what triggers the testOnlyAgePassword fallback.
+		t.Setenv("GPG_AGENT_INFO", "/nonexistent/socket:0:1")
 		os.Unsetenv("XDG_RUNTIME_DIR")
 		testOnlyAgePassword = mockIdentityPassphrase
 

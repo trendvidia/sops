@@ -1606,3 +1606,203 @@ func TestSortKeyGroupIndices(t *testing.T) {
 		assert.Equal(t, expected, indices)
 	})
 }
+
+func TestParseDirective(t *testing.T) {
+	cases := map[string]Directive{
+		"sops:unencrypted":      DirectiveUnencrypted,
+		" sops:unencrypted":     DirectiveUnencrypted, // leading space (typical: "# sops:unencrypted" -> " sops:unencrypted")
+		"  SOPS:UNENCRYPTED  ":  DirectiveUnencrypted, // case + trailing space
+		"sops:encrypted":        DirectiveEncrypted,
+		" sops:encrypted":       DirectiveEncrypted,
+		"sopsunencrypted":       DirectiveNone, // missing colon
+		"a sops:unencrypted":    DirectiveNone, // not at start of trimmed text
+		"sops:unencrypted x":    DirectiveNone, // extra trailing tokens not allowed
+		"":                      DirectiveNone,
+		"just a regular comment": DirectiveNone,
+	}
+	for input, expected := range cases {
+		t.Run(input, func(t *testing.T) {
+			assert.Equal(t, expected, ParseDirective(input))
+		})
+	}
+}
+
+// TestDirectiveUnencryptedScalar verifies that a `# sops:unencrypted` directive
+// before a scalar leaves that scalar in plaintext while neighbouring keys are
+// still encrypted.
+func TestDirectiveUnencryptedScalar(t *testing.T) {
+	branches := TreeBranches{
+		TreeBranch{
+			TreeItem{Key: "encrypted_one", Value: "secret1"},
+			TreeItem{Key: Comment{Value: " sops:unencrypted"}, Value: nil},
+			TreeItem{Key: "plain", Value: "visible"},
+			TreeItem{Key: "encrypted_two", Value: "secret2"},
+		},
+	}
+	tree := Tree{Branches: branches, Metadata: Metadata{}}
+	cipher := reverseCipher{}
+	_, err := tree.Encrypt(bytes.Repeat([]byte("f"), 32), cipher)
+	assert.NoError(t, err)
+
+	got := tree.Branches[0]
+	assert.Equal(t, reverse("secret1"), got[0].Value, "encrypted_one should be encrypted")
+	// The directive comment itself remains plaintext.
+	assert.Equal(t, " sops:unencrypted", got[1].Key.(Comment).Value)
+	// `plain` follows the directive and stays in clear text.
+	assert.Equal(t, "visible", got[2].Value, "plain should NOT be encrypted")
+	// The directive only applies to the next item; siblings after `plain` get encrypted.
+	assert.Equal(t, reverse("secret2"), got[3].Value, "encrypted_two should be encrypted")
+}
+
+// TestDirectiveUnencryptedSubtree verifies that a directive on a block-valued
+// key applies to every leaf inside that block.
+func TestDirectiveUnencryptedSubtree(t *testing.T) {
+	branches := TreeBranches{
+		TreeBranch{
+			TreeItem{Key: Comment{Value: " sops:unencrypted"}, Value: nil},
+			TreeItem{
+				Key: "config",
+				Value: TreeBranch{
+					TreeItem{Key: "host", Value: "example.com"},
+					TreeItem{Key: "port", Value: "8080"},
+					TreeItem{Key: "tags", Value: []interface{}{"a", "b"}},
+				},
+			},
+			TreeItem{Key: "secret", Value: "still-encrypted"},
+		},
+	}
+	tree := Tree{Branches: branches, Metadata: Metadata{}}
+	cipher := reverseCipher{}
+	_, err := tree.Encrypt(bytes.Repeat([]byte("f"), 32), cipher)
+	assert.NoError(t, err)
+
+	got := tree.Branches[0]
+	cfg := got[1].Value.(TreeBranch)
+	assert.Equal(t, "example.com", cfg[0].Value, "config.host should be unencrypted")
+	assert.Equal(t, "8080", cfg[1].Value, "config.port should be unencrypted")
+	assert.Equal(t, []interface{}{"a", "b"}, cfg[2].Value, "config.tags should be unencrypted")
+	assert.Equal(t, reverse("still-encrypted"), got[2].Value, "sibling secret should still encrypt")
+}
+
+// TestDirectiveEncryptedOverridesUnencryptedSuffix verifies that a directive
+// can force encryption of an item that the suffix rule would otherwise leave
+// in plaintext.
+func TestDirectiveEncryptedOverridesUnencryptedSuffix(t *testing.T) {
+	branches := TreeBranches{
+		TreeBranch{
+			TreeItem{Key: "regular_unencrypted", Value: "implied-by-suffix"},
+			TreeItem{Key: Comment{Value: " sops:encrypted"}, Value: nil},
+			TreeItem{Key: "secret_unencrypted", Value: "directive-overrides"},
+		},
+	}
+	tree := Tree{
+		Branches: branches,
+		Metadata: Metadata{UnencryptedSuffix: DefaultUnencryptedSuffix},
+	}
+	cipher := reverseCipher{}
+	_, err := tree.Encrypt(bytes.Repeat([]byte("f"), 32), cipher)
+	assert.NoError(t, err)
+
+	got := tree.Branches[0]
+	assert.Equal(t, "implied-by-suffix", got[0].Value, "suffix wins for items without a directive")
+	assert.Equal(t, reverse("directive-overrides"), got[2].Value, "directive overrides suffix")
+}
+
+// TestDirectiveRoundTrip verifies that an encrypt → decrypt round-trip yields
+// the original tree, including the directive comments themselves.
+func TestDirectiveRoundTrip(t *testing.T) {
+	original := func() TreeBranch {
+		return TreeBranch{
+			TreeItem{Key: "encrypted_field", Value: "secret"},
+			TreeItem{Key: Comment{Value: " sops:unencrypted"}, Value: nil},
+			TreeItem{Key: "plain_field", Value: "visible"},
+		}
+	}
+	branches := TreeBranches{original()}
+	tree := Tree{Branches: branches, Metadata: Metadata{}}
+	key := bytes.Repeat([]byte("f"), 32)
+	cipher := reverseCipher{}
+
+	macEnc, err := tree.Encrypt(key, cipher)
+	assert.NoError(t, err)
+
+	macDec, err := tree.Decrypt(key, cipher)
+	assert.NoError(t, err)
+	assert.Equal(t, macEnc, macDec, "MAC must match across encrypt/decrypt")
+
+	assert.True(t, reflect.DeepEqual(tree.Branches[0], original()),
+		"round-trip mismatch:\n got:      %+v\n expected: %+v",
+		tree.Branches[0], original())
+}
+
+// TestDirectiveDoesNotLeakToSiblings verifies that a directive only applies to
+// the immediately following non-comment item, not to siblings beyond it.
+func TestDirectiveDoesNotLeakToSiblings(t *testing.T) {
+	branches := TreeBranches{
+		TreeBranch{
+			TreeItem{Key: Comment{Value: " sops:unencrypted"}, Value: nil},
+			TreeItem{Key: "plain", Value: "visible"},
+			TreeItem{Key: "secret", Value: "should-be-encrypted"},
+		},
+	}
+	tree := Tree{Branches: branches, Metadata: Metadata{}}
+	_, err := tree.Encrypt(bytes.Repeat([]byte("f"), 32), reverseCipher{})
+	assert.NoError(t, err)
+
+	got := tree.Branches[0]
+	assert.Equal(t, "visible", got[1].Value, "directive applies to next item")
+	assert.Equal(t, reverse("should-be-encrypted"), got[2].Value, "directive does NOT leak to siblings")
+}
+
+// TestDirectiveInnermostWins verifies that a directive on a child overrides a
+// directive at an outer level.
+func TestDirectiveInnermostWins(t *testing.T) {
+	branches := TreeBranches{
+		TreeBranch{
+			TreeItem{Key: Comment{Value: " sops:unencrypted"}, Value: nil},
+			TreeItem{
+				Key: "outer",
+				Value: TreeBranch{
+					TreeItem{Key: "inherited_plain", Value: "stays-plain"},
+					TreeItem{Key: Comment{Value: " sops:encrypted"}, Value: nil},
+					TreeItem{Key: "forced_encrypted", Value: "now-encrypted"},
+				},
+			},
+		},
+	}
+	tree := Tree{Branches: branches, Metadata: Metadata{}}
+	_, err := tree.Encrypt(bytes.Repeat([]byte("f"), 32), reverseCipher{})
+	assert.NoError(t, err)
+
+	outer := tree.Branches[0][1].Value.(TreeBranch)
+	assert.Equal(t, "stays-plain", outer[0].Value,
+		"item inheriting outer unencrypted directive stays plain")
+	assert.Equal(t, reverse("now-encrypted"), outer[2].Value,
+		"inner encrypted directive overrides outer unencrypted")
+}
+
+// TestDirectiveMACChangesWithMACOnlyEncrypted ensures the MAC remains coherent
+// when a directive flips the encrypt decision under MACOnlyEncrypted.
+func TestDirectiveMACOnlyEncrypted(t *testing.T) {
+	build := func() Tree {
+		return Tree{
+			Branches: TreeBranches{
+				TreeBranch{
+					TreeItem{Key: "a", Value: "encrypted-value"},
+					TreeItem{Key: Comment{Value: " sops:unencrypted"}, Value: nil},
+					TreeItem{Key: "b", Value: "plain-value"},
+				},
+			},
+			Metadata: Metadata{MACOnlyEncrypted: true},
+		}
+	}
+	key := bytes.Repeat([]byte("f"), 32)
+	cipher := reverseCipher{}
+
+	enc := build()
+	macEnc, err := enc.Encrypt(key, cipher)
+	assert.NoError(t, err)
+	macDec, err := enc.Decrypt(key, cipher)
+	assert.NoError(t, err)
+	assert.Equal(t, macEnc, macDec, "MAC stable across encrypt/decrypt under MACOnlyEncrypted")
+}

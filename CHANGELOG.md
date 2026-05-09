@@ -1,5 +1,36 @@
 # Changelog
 
+## 3.13.1
+
+Features:
+
+* Add a **PXF (protowire) store** for the
+  [trendvidia/protowire](https://github.com/trendvidia/protowire) text format.
+  Files with the `.pxf` extension (or `--input-type protowire` /
+  `--output-type protowire`, alias `pxf`) are now treated as a typed,
+  comment-aware tree alongside the existing YAML / JSON / ENV / INI / BINARY
+  formats. Top-level keys must be valid PXF identifiers; nested keys may be
+  arbitrary strings. Built on
+  [trendvidia/protowire-go](https://github.com/trendvidia/protowire-go)'s
+  schema-free AST API, so no `.proto` schema is required to encrypt or decrypt
+  a sops file.
+* Add **in-file encryption directives**: a comment of the form
+  `# sops:unencrypted` or `# sops:encrypted` placed directly above a key marks
+  that key (and its entire subtree) as unencrypted or encrypted, overriding
+  any `unencrypted_suffix` / `encrypted_suffix` / `*_regex` /
+  `*_comment_regex` rule. Unlike the suffix rule, directives don't pollute key
+  names, and they let you mix encrypted and unencrypted fields freely inside
+  the same block. Works in any format that preserves comments (YAML, PXF, INI).
+
+Bugfixes:
+
+* Fix `TestMasterKey_Identities_Passphrase` failing on macOS. The test
+  attempted to disable gpg-agent by unsetting `XDG_RUNTIME_DIR`, but on macOS
+  gpg-agent runs on `~/.gnupg/S.gpg-agent` regardless of that variable. The
+  test now also sets `GPG_AGENT_INFO` to a bogus path so that
+  `gopgagent.NewConn()` fails and the `testOnlyAgePassword` fallback is
+  exercised on every platform.
+
 ## 3.13.0
 
 Improvements:
