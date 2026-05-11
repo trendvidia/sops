@@ -41,6 +41,14 @@ func (err *getDataKeyError) Error() string {
 		err.successfulKeyGroups())
 }
 
+// Unwrap exposes the per-group errors so [errors.Is] and [errors.As]
+// can traverse into the aggregated result. Useful for callers that
+// want to detect cancellation, deadline, or other sentinel errors that
+// the keyservice surfaced through an individual group.
+func (err *getDataKeyError) Unwrap() []error {
+	return err.GroupResults
+}
+
 func (err *getDataKeyError) UserError() string {
 	var groupErrs []string
 	for i, res := range err.GroupResults {
@@ -107,6 +115,12 @@ func (e decryptKeyErrors) Error() string {
 	return fmt.Sprintf("error decrypting key: %s", []error(e))
 }
 
+// Unwrap exposes the per-key errors so [errors.Is] / [errors.As] can
+// traverse them.
+func (e decryptKeyErrors) Unwrap() []error {
+	return []error(e)
+}
+
 func (e decryptKeyErrors) UserError() string {
 	var errStrs []string
 	for _, err := range []error(e) {
@@ -135,6 +149,12 @@ func (e *decryptKeyError) isSuccessful() bool {
 
 func (e *decryptKeyError) Error() string {
 	return fmt.Sprintf("error decrypting key %s: %s", e.keyName, e.errs)
+}
+
+// Unwrap exposes the per-keyservice errors so [errors.Is] / [errors.As]
+// can traverse them.
+func (e *decryptKeyError) Unwrap() []error {
+	return e.errs
 }
 
 func (e *decryptKeyError) UserError() string {
