@@ -790,6 +790,13 @@ type EncryptedFileLoader interface {
 // PlainFileLoader is the interface for loading of plain text files. It provides a
 // way to load unencrypted files into SOPS. Because the files it loads are
 // unencrypted, the returned data structure does not contain any metadata.
+//
+// Consumers that have plaintext in mlocked memory should pass the
+// mlocked buffer's `[]byte` slice directly — slices into mlocked memory
+// pass by reference without copying, so the plaintext stays
+// mlock-resident during the load phase. Per-field allocations during
+// parse still occur on the regular heap; closing that gap for
+// pxf.Secret-typed fields is tracked at chameleon#7.
 type PlainFileLoader interface {
 	LoadPlainFile(in []byte) (TreeBranches, error)
 }
