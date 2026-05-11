@@ -40,6 +40,7 @@ import (
 	"crypto/rand"
 	"crypto/sha512"
 	"fmt"
+	"io"
 	"reflect"
 	"regexp"
 	"slices"
@@ -804,6 +805,19 @@ type EncryptedFileEmitter interface {
 // shown
 type PlainFileEmitter interface {
 	EmitPlainFile(TreeBranches) ([]byte, error)
+}
+
+// PlainFileEmitterTo is the streaming sibling of [PlainFileEmitter]. Stores
+// that implement it can write plaintext output directly to a caller-supplied
+// writer, avoiding an intermediate `[]byte` allocation on the regular heap.
+// This is the seam consumers use to route plaintext into mlocked memory
+// (e.g. a memguard LockedBuffer wrapped as an io.Writer) without the
+// plaintext ever residing on unprotected heap.
+//
+// Stores that do not implement this interface fall back to the byte-emit
+// path via [PlainFileEmitter.EmitPlainFile].
+type PlainFileEmitterTo interface {
+	EmitPlainFileTo(w io.Writer, branches TreeBranches) error
 }
 
 // ValueEmitter is the interface for emitting a value. It provides a way to emit

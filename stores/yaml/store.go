@@ -374,10 +374,28 @@ func (store *Store) EmitEncryptedFile(in sops.Tree) ([]byte, error) {
 // sops.TreeBranches runtime object
 func (store *Store) EmitPlainFile(branches sops.TreeBranches) ([]byte, error) {
 	var b bytes.Buffer
-	e := yaml.NewEncoder(io.Writer(&b))
+	if err := store.EmitPlainFileTo(&b, branches); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
+// EmitPlainFileTo streams the plaintext yaml output directly to w, avoiding
+// the intermediate `[]byte` allocation that [Store.EmitPlainFile] holds.
+// Implements [sops.PlainFileEmitterTo] — consumers can route plaintext into
+// mlocked memory (e.g. a memguard LockedBuffer wrapped as io.Writer) so the
+// decrypted output never resides on unprotected heap.
+func (store *Store) EmitPlainFileTo(w io.Writer, branches sops.TreeBranches) error {
+	if len(branches) == 0 {
+		// Match EmitPlainFile's historical behavior: empty input yields
+		// empty output (the yaml encoder requires at least one Encode call
+		// before Close, otherwise it errors with "expected STREAM-START").
+		return nil
+	}
+	e := yaml.NewEncoder(w)
 	indent, err := store.getIndentation()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	e.SetIndent(indent)
 	for _, branch := range branches {
@@ -391,13 +409,11 @@ func (store *Store) EmitPlainFile(branches sops.TreeBranches) ([]byte, error) {
 		store.appendTreeBranch(branch, &mapping)
 		doc.Content = append(doc.Content, &mapping)
 		// Encode YAML
-		err := e.Encode(&doc)
-		if err != nil {
-			return nil, fmt.Errorf("Error marshaling to YAML: %s", err)
+		if err := e.Encode(&doc); err != nil {
+			return fmt.Errorf("Error marshaling to YAML: %s", err)
 		}
 	}
-	e.Close()
-	return b.Bytes(), nil
+	return e.Close()
 }
 
 // EmitValue returns bytes corresponding to a single encoded value
