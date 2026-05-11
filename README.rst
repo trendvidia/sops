@@ -44,7 +44,11 @@ If you don't have Go installed, set it up with:
 
 Or whatever variation of the above fits your system and shell.
 
-To use **SOPS** as a library, take a look at the `decrypt package <https://pkg.go.dev/github.com/getsops/sops/v3/decrypt>`_.
+To use **SOPS** as a Go library, see the
+`decrypt <https://pkg.go.dev/github.com/getsops/sops/v3/decrypt>`_ and
+`encrypt <https://pkg.go.dev/github.com/getsops/sops/v3/encrypt>`_
+packages — and the `Using SOPS as a Go library`_ section below for a
+worked walkthrough including context-aware APIs.
 
 .. sectnum::
 .. contents:: Table of Contents
@@ -497,6 +501,142 @@ the input store type can be adjusted by passing ``--input-type``, and the output
 .. code:: sh
 
     $ echo foo=bar | sops encrypt --filename-override path/filename.sops.yaml --input-type dotenv > encrypted-data
+
+
+Using SOPS as a Go library
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Two top-level packages expose a stable Go API for programmatic
+encrypt/decrypt without going through the CLI:
+
+* `github.com/getsops/sops/v3/decrypt <https://pkg.go.dev/github.com/getsops/sops/v3/decrypt>`_
+  — load and decrypt sops-encrypted bytes / files.
+* `github.com/getsops/sops/v3/encrypt <https://pkg.go.dev/github.com/getsops/sops/v3/encrypt>`_
+  — produce sops-encrypted bytes / files from plaintext.
+
+Both packages mirror each other's shape: ``Data`` / ``DataWithFormat`` /
+``File`` entry points, plus ``*WithContext`` siblings that thread a
+``context.Context`` end-to-end through the keyservice layer for
+cancellation-aware integrations.
+
+Decrypting
+**********
+
+.. code:: go
+
+    import "github.com/getsops/sops/v3/decrypt"
+
+    // Format inferred from the path extension.
+    plain, err := decrypt.File("config.enc.yaml", "yaml")
+
+    // Or pass raw bytes:
+    plain, err = decrypt.Data(ciphertext, "yaml")
+
+Context-aware variants honor cancellation and deadlines all the way
+through the keyservice / KMS round-trip — useful at boot or anywhere a
+hung KMS call must be bounded:
+
+.. code:: go
+
+    import (
+        "context"
+        "time"
+
+        "github.com/getsops/sops/v3/decrypt"
+    )
+
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    plain, err := decrypt.DataWithContext(ctx, ciphertext, "yaml")
+    // err wraps context.DeadlineExceeded / context.Canceled if the
+    // deadline / cancellation fired during the decrypt; errors.Is
+    // detects it through the aggregated key-group error.
+
+Encrypting
+**********
+
+The ``encrypt`` package takes typed ``Options`` so callers can specify
+recipients, suffix / regex rules, MAC mode, and (optionally) a custom
+``KeyServices``:
+
+.. code:: go
+
+    import (
+        "github.com/getsops/sops/v3"
+        "github.com/getsops/sops/v3/age"
+        "github.com/getsops/sops/v3/encrypt"
+    )
+
+    mk, _ := age.MasterKeyFromRecipient("age1lzd99uklcjnc...")
+
+    ciphertext, err := encrypt.Data(plaintext, "yaml", encrypt.Options{
+        KeyGroups:         []sops.KeyGroup{{mk}},
+        UnencryptedSuffix: "_plain",
+    })
+
+    // File variant reads / writes from disk:
+    err = encrypt.File("plain.yaml", "encrypted.yaml", "yaml", encrypt.Options{
+        KeyGroups: []sops.KeyGroup{{mk}},
+    })
+
+Same ``*WithContext`` siblings honor cancellation:
+
+.. code:: go
+
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    ciphertext, err := encrypt.DataWithContext(ctx, plaintext, "yaml", encrypt.Options{
+        KeyGroups: []sops.KeyGroup{{mk}},
+    })
+
+Re-encrypting with the same key set
+***********************************
+
+When mutating an encrypted file (decrypt → edit → re-encrypt) and you
+want the new ciphertext to carry the same recipients / shamir threshold
+/ suffix rules as the original, ``UsingSameKeysAs`` extracts the
+relevant metadata from a reference ciphertext and applies it:
+
+.. code:: go
+
+    // Reference: an existing encrypted file we want to mirror.
+    refCiph, _ := decrypt.File("config.enc.yaml", "yaml") // get plaintext for editing
+    refBytes, _ := os.ReadFile("config.enc.yaml")        // keep ciphertext for metadata
+
+    // Mutate the plaintext in your own code...
+    edited := mutate(refCiph)
+
+    // Re-encrypt with the original recipients:
+    newCiph, err := encrypt.UsingSameKeysAs(edited, refBytes, "yaml")
+
+The ctx-aware variant ``encrypt.UsingSameKeysAsWithContext`` carries the
+same end-to-end cancellation semantics as the rest of the package.
+
+Detecting cancellation in errors
+********************************
+
+The aggregated errors returned by the data-key acquisition and key-update
+paths implement ``Unwrap() []error``. ``errors.Is`` / ``errors.As`` can
+traverse into the per-keygroup or per-keyservice errors:
+
+.. code:: go
+
+    _, err := decrypt.DataWithContext(ctx, ciphertext, "yaml")
+    if errors.Is(err, context.DeadlineExceeded) {
+        // a key-service call hit the ctx deadline
+    }
+
+Custom ``KeyServices``
+**********************
+
+Both packages accept a custom ``[]keyservice.KeyServiceClient`` via
+``Options.KeyServices`` (encrypt side) or by dropping down to
+``Metadata.GetDataKeyCtxWithKeyServices`` (decrypt side). Useful for
+out-of-process keyservices, in-test fakes, or routing different
+providers through different keyservices. See ``keyservice/`` for the
+interface.
 
 
 Encrypting using Hashicorp Vault
