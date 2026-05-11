@@ -139,7 +139,31 @@ func (key *MasterKey) Encrypt(dataKey []byte) error {
 
 // EncryptContext takes a SOPS data key, encrypts it with HuaweiCloud KMS and stores the result
 // in the EncryptedKey field.
+//
+// Context cancellation has the same limitation as [MasterKey.DecryptContext]
+// — see that method's doc and trendvidia/sops#10.
 func (key *MasterKey) EncryptContext(ctx context.Context, dataKey []byte) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("hckms: context already cancelled: %w", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- key.encryptUnaware(ctx, dataKey)
+	}()
+
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return fmt.Errorf("hckms: caller's context cancelled; SDK call continues in background until its internal timeout (~30-60s) — see trendvidia/sops#10: %w", ctx.Err())
+	}
+}
+
+// encryptUnaware runs the actual HuaweiCloud KMS EncryptData call. The
+// ctx is used only for client creation; the EncryptData call itself is
+// ctx-less per the SDK's API surface.
+func (key *MasterKey) encryptUnaware(ctx context.Context, dataKey []byte) error {
 	client, err := key.createKMSClient(ctx)
 	if err != nil {
 		log.WithField("keyID", key.KeyID).Info("Encryption failed")
@@ -198,7 +222,49 @@ func (key *MasterKey) Decrypt() ([]byte, error) {
 }
 
 // DecryptContext decrypts the EncryptedKey with HuaweiCloud KMS and returns the result.
+//
+// Context cancellation has a known limitation here: the HuaweiCloud SDK
+// (huaweicloud-sdk-go-v3) does not expose a ctx-aware DecryptData
+// variant — neither `client.DecryptDataWithContext(ctx, ...)` nor a
+// per-request `*http.Request.WithContext()` hook. To approximate
+// cancellation, this method runs the SDK call in a goroutine and
+// returns via select on ctx.Done(). When the caller's ctx fires, the
+// return is immediate, but the in-flight HuaweiCloud SDK call continues
+// in the background until the SDK's internal timeout (typically 30-60s),
+// leaving a transient goroutine. The leak is bounded (no permanent
+// resources held; GC reclaims after the SDK call returns).
+//
+// This is documented as a known limitation; tracked upstream and at
+// trendvidia/sops#10. Closing it properly requires HuaweiCloud SDK to
+// add ctx-aware request methods.
 func (key *MasterKey) DecryptContext(ctx context.Context) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("hckms: context already cancelled: %w", err)
+	}
+
+	type result struct {
+		plaintext []byte
+		err       error
+	}
+	done := make(chan result, 1)
+	go func() {
+		plaintext, err := key.decryptUnaware(ctx)
+		done <- result{plaintext: plaintext, err: err}
+	}()
+
+	select {
+	case r := <-done:
+		return r.plaintext, r.err
+	case <-ctx.Done():
+		return nil, fmt.Errorf("hckms: caller's context cancelled; SDK call continues in background until its internal timeout (~30-60s) — see trendvidia/sops#10: %w", ctx.Err())
+	}
+}
+
+// decryptUnaware runs the actual HuaweiCloud KMS DecryptData call. The
+// ctx is used only for client creation (the SDK's createKMSClient
+// honors it); the DecryptData call itself is ctx-less per the SDK's
+// API surface.
+func (key *MasterKey) decryptUnaware(ctx context.Context) ([]byte, error) {
 	client, err := key.createKMSClient(ctx)
 	if err != nil {
 		log.WithField("keyID", key.KeyID).Info("Decryption failed")
