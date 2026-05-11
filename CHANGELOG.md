@@ -1,5 +1,97 @@
 # Changelog
 
+## 3.13.2
+
+Context cancellation + programmatic encrypt + streaming-friendly I/O.
+Wire format unchanged. Public ``decrypt`` package API stable
+(backward-compatible additions). New ``encrypt`` package promoted to
+the stable surface alongside ``decrypt``.
+
+Features:
+
+* **`context.Context` propagated end-to-end** through decrypt + encrypt
+  paths. Cancellation honored in every driver:
+
+  | Driver | Pre-call | Mid-RPC |
+  |---|---|---|
+  | AWS KMS | ✅ | ✅ |
+  | GCP KMS | ✅ | ✅ |
+  | Azure Key Vault | ✅ | ✅ |
+  | HashiCorp Vault | ✅ | ✅ |
+  | HuaweiCloud KMS | ✅ | ⚠️ approximate (goroutine shim — see #10) |
+  | PGP | ✅ | n/a (local crypto) |
+  | age | ✅ | n/a (local crypto) |
+
+  HuaweiCloud KMS's mid-RPC cancellation is approximated via a
+  goroutine + select shim because the upstream
+  ``huaweicloud-sdk-go-v3`` doesn't expose ctx-aware request methods.
+  Caller's deadline is honored; the in-flight SDK call continues in
+  the background until the SDK's internal timeout (~30-60s) — bounded
+  goroutine leak per cancelled call. Tracked at #10.
+
+* **New `decrypt` ctx-aware entry points**:
+  ``decrypt.DataWithContext``, ``decrypt.DataWithFormatContext``,
+  ``decrypt.FileWithContext``.
+
+* **New `encrypt` package** — stable top-level API mirroring ``decrypt``:
+  ``encrypt.Data`` / ``encrypt.DataWithFormat`` / ``encrypt.File`` plus
+  ctx-aware siblings.
+  ``encrypt.UsingSameKeysAs`` re-encrypts plaintext while preserving
+  the recipients / shamir threshold / suffix rules of a reference
+  ciphertext (the workhorse for chameleon-style bulk-edit migration).
+
+* **`decrypt.DataIntoWriter`** — streams plaintext directly to a
+  caller-supplied ``io.Writer`` (e.g., a memguard ``LockedBuffer``
+  wrapped as a Writer) instead of allocating a fresh ``[]byte`` on
+  the regular heap. New ``sops.PlainFileEmitterTo`` interface;
+  implemented by yaml / json / protowire stores. Closes the largest
+  plaintext-in-heap window for consumers (~kilobytes of decrypted
+  layer file → mlocked memory directly).
+
+* **`encrypt.DataFromReader`** — symmetric ``io.Reader`` entry points
+  on the encrypt side. Useful for ``io.Reader`` sources (stdin,
+  network, file handles) and for API symmetry.
+
+* **`errors.Is` / `errors.As` traverse aggregated errors**.
+  ``getDataKeyError`` / ``decryptKeyError`` / ``decryptKeyErrors`` now
+  implement ``Unwrap() []error`` (Go 1.20+ multi-error). Lets ctx-aware
+  consumers detect ``context.Canceled`` / ``context.DeadlineExceeded``
+  inside the per-keygroup result aggregation.
+
+Documentation:
+
+* New **"Using SOPS as a Go library"** section in ``README.rst``
+  covering the ``decrypt`` and ``encrypt`` packages, ctx-aware APIs,
+  ``UsingSameKeysAs``, ``errors.Is``-detectable cancellation, and
+  custom ``KeyServices``.
+
+Internal:
+
+* ``Metadata.GetDataKeyCtx`` / ``GetDataKeyCtxWithKeyServices`` +
+  internal ``decryptKeyGroupCtx`` / ``decryptKeyCtx`` thread ctx
+  through the data-key acquisition path.
+* ``Metadata.UpdateMasterKeysCtx`` / ``UpdateMasterKeysCtxWithKeyServices``
+  + ``Tree.GenerateDataKeyCtx`` / ``GenerateDataKeyCtxWithKeyServices``
+  for the encrypt side.
+* ``Server.Decrypt`` / ``Server.Encrypt`` propagate ctx into each
+  per-provider ``decryptWith*`` / ``encryptWith*`` helper, which calls
+  the per-keysource ``DecryptContext`` / ``EncryptContext``.
+* New observable-cancellation test using a fake blocking keyservice
+  (``sops_blocking_test.go``) — verifies a deadlined ctx aborts an
+  in-flight keyservice call within the deadline, not after.
+
+Known limitations / asterisks:
+
+* HuaweiCloud KMS mid-RPC cancellation: approximate (see #10).
+* JSON + protowire stores' ``EmitPlainFileTo`` still has one internal
+  ``[]byte`` allocation during marshal; the FINAL plaintext lands in
+  the caller's writer but the internal allocation gap requires
+  encoder-side rewrites (json) or an upstream ``pxf.FormatDocumentTo``
+  in protowire-go (pxf). Tracked for follow-up.
+* ini / dotenv stores do not implement ``PlainFileEmitterTo``;
+  ``DataIntoWriter`` falls back to ``EmitPlainFile`` + ``w.Write`` for
+  those formats.
+
 ## 3.13.1
 
 Features:
