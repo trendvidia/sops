@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -91,6 +92,28 @@ func (store *Store) EmitPlainFile(in sops.TreeBranches) ([]byte, error) {
 		return nil, fmt.Errorf("Error marshaling to PXF: %s", err)
 	}
 	return pxf.FormatDocument(doc), nil
+}
+
+// EmitPlainFileTo streams the plaintext PXF output directly to w.
+// Implements [sops.PlainFileEmitterTo].
+//
+// Caveat: protowire-go's `pxf.FormatDocument` returns `[]byte` (no
+// streaming variant yet); this implementation still allocates one
+// intermediate `[]byte` before writing. The FINAL plaintext does land
+// in the caller's writer, which is the load-bearing seam for
+// mlock-residency at the consumer boundary. A follow-up PR on
+// protowire-go is tracked to add `pxf.FormatDocumentTo(io.Writer)` so
+// this can become fully streaming.
+func (store *Store) EmitPlainFileTo(w io.Writer, in sops.TreeBranches) error {
+	if len(in) != 1 {
+		return errors.New("PXF stores a single document per file; got more than one tree branch")
+	}
+	doc, err := treeBranchToDocument(in[0])
+	if err != nil {
+		return fmt.Errorf("Error marshaling to PXF: %s", err)
+	}
+	_, err = w.Write(pxf.FormatDocument(doc))
+	return err
 }
 
 // EmitValue returns bytes corresponding to a single encoded value in a generic

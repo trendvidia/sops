@@ -90,6 +90,26 @@ func (store BinaryStore) EmitPlainFile(in sops.TreeBranches) ([]byte, error) {
 	return nil, fmt.Errorf("%w: no binary data found in tree", BinaryStoreEmitPlainError)
 }
 
+// EmitPlainFileTo streams the binary store's plaintext directly to w.
+// Implements [sops.PlainFileEmitterTo]. The binary store's payload is a
+// single string field; this avoids allocating a copy when writing it out.
+func (store BinaryStore) EmitPlainFileTo(w io.Writer, in sops.TreeBranches) error {
+	if len(in) != 1 {
+		return fmt.Errorf("%w: there must be exactly one tree branch", BinaryStoreEmitPlainError)
+	}
+	for _, item := range in[0] {
+		if item.Key == "data" {
+			value, ok := item.Value.(string)
+			if !ok {
+				return fmt.Errorf("%w: 'data' key in tree does not have a string value", BinaryStoreEmitPlainError)
+			}
+			_, err := io.WriteString(w, value)
+			return err
+		}
+	}
+	return fmt.Errorf("%w: no binary data found in tree", BinaryStoreEmitPlainError)
+}
+
 // EmitValue extracts a value from a generic interface{} object representing a structured set
 // of binary files
 func (store BinaryStore) EmitValue(v interface{}) ([]byte, error) {
@@ -328,6 +348,28 @@ func (store *Store) EmitPlainFile(in sops.TreeBranches) ([]byte, error) {
 	}
 	out = append(out, '\n')
 	return out, nil
+}
+
+// EmitPlainFileTo streams the plaintext JSON output directly to w,
+// avoiding the intermediate `[]byte` allocation that EmitPlainFile holds.
+// Implements [sops.PlainFileEmitterTo].
+//
+// Caveat: this store's internal `jsonFromTreeBranch` builds a `[]byte`
+// before writing — fully streaming JSON emission would require an
+// encoder-based rewrite of that path. This implementation still has one
+// intermediate allocation but moves the FINAL plaintext into the
+// caller's writer, which is the load-bearing seam for mlock-residency.
+// Closing the internal allocation gap is tracked for a follow-up.
+func (store *Store) EmitPlainFileTo(w io.Writer, in sops.TreeBranches) error {
+	out, err := store.jsonFromTreeBranch(in[0])
+	if err != nil {
+		return fmt.Errorf("Error marshaling to json: %s", err)
+	}
+	if _, err := w.Write(out); err != nil {
+		return err
+	}
+	_, err = w.Write([]byte{'\n'})
+	return err
 }
 
 // EmitValue returns bytes corresponding to a single encoded value
