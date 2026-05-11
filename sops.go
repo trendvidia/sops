@@ -912,6 +912,18 @@ func (m *Metadata) UpdateMasterKeys(dataKey []byte) (errs []error) {
 // GetDataKeyWithKeyServices retrieves the data key, asking KeyServices to decrypt it with each
 // MasterKey in the Metadata's KeySources until one of them succeeds.
 func (m *Metadata) GetDataKeyWithKeyServices(svcs []keyservice.KeyServiceClient, decryptionOrder []string) ([]byte, error) {
+	return m.GetDataKeyCtxWithKeyServices(context.Background(), svcs, decryptionOrder)
+}
+
+// GetDataKeyCtxWithKeyServices is the context-aware sibling of
+// [Metadata.GetDataKeyWithKeyServices]. The ctx propagates to each
+// KeyService.Decrypt invocation. Returns immediately (without consulting any
+// keyservice) when ctx is already cancelled; cancellation between key-group
+// iterations also terminates early.
+func (m *Metadata) GetDataKeyCtxWithKeyServices(ctx context.Context, svcs []keyservice.KeyServiceClient, decryptionOrder []string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("GetDataKey: context already cancelled: %w", err)
+	}
 	if m.DataKey != nil {
 		return m.DataKey, nil
 	}
@@ -921,7 +933,10 @@ func (m *Metadata) GetDataKeyWithKeyServices(svcs []keyservice.KeyServiceClient,
 	}
 	var parts [][]byte
 	for i, group := range m.KeyGroups {
-		part, err := decryptKeyGroup(group, svcs, decryptionOrder)
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("GetDataKey: context cancelled mid-iteration: %w", err)
+		}
+		part, err := decryptKeyGroupCtx(ctx, group, svcs, decryptionOrder)
 		if err == nil {
 			parts = append(parts, part)
 		}
@@ -952,13 +967,23 @@ func (m *Metadata) GetDataKeyWithKeyServices(svcs []keyservice.KeyServiceClient,
 // any of the MasterKeys in the KeyGroup with any of the provided key services,
 // returning as soon as one key service succeeds.
 func decryptKeyGroup(group KeyGroup, svcs []keyservice.KeyServiceClient, decryptionOrder []string) ([]byte, error) {
+	return decryptKeyGroupCtx(context.Background(), group, svcs, decryptionOrder)
+}
+
+// decryptKeyGroupCtx is the context-aware sibling of decryptKeyGroup. The
+// context propagates to each KeyService.Decrypt call so a cancelled context
+// terminates an in-flight KMS round-trip (when the keyservice is gRPC-served
+// or otherwise honors ctx; the in-process local keyservice currently ignores
+// it pending per-keysource follow-ups).
+func decryptKeyGroupCtx(ctx context.Context, group KeyGroup, svcs []keyservice.KeyServiceClient, decryptionOrder []string) ([]byte, error) {
 	var keyErrs []error
-	// Sort MasterKeys in the group so we try them in specific order
-	// Use sorted indices to avoid group slice modification
 	indices := sortKeyGroupIndices(group, decryptionOrder)
 	for _, indexVal := range indices {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("decryptKeyGroup: context cancelled mid-iteration: %w", err)
+		}
 		key := group[indexVal]
-		part, err := decryptKey(key, svcs)
+		part, err := decryptKeyCtx(ctx, key, svcs)
 		if err != nil {
 			keyErrs = append(keyErrs, err)
 		} else {
@@ -1002,6 +1027,15 @@ func sortKeyGroupIndices(group KeyGroup, decryptionOrder []string) []int {
 // decryptKey tries to decrypt the contents of the provided MasterKey with any
 // of the key services, returning as soon as one key service succeeds.
 func decryptKey(key keys.MasterKey, svcs []keyservice.KeyServiceClient) ([]byte, error) {
+	return decryptKeyCtx(context.Background(), key, svcs)
+}
+
+// decryptKeyCtx is the context-aware sibling of decryptKey. The ctx is passed
+// directly to each KeyService.Decrypt invocation. gRPC-served keyservices
+// honor it natively (cancelling the RPC); in-process keyservices currently
+// ignore it inside Server.Decrypt's per-provider helpers — closing that gap
+// is per-keysource follow-up work tracked in the trendvidia fork.
+func decryptKeyCtx(ctx context.Context, key keys.MasterKey, svcs []keyservice.KeyServiceClient) ([]byte, error) {
 	svcKey := keyservice.KeyFromMasterKey(key)
 	var part []byte
 	decryptErr := decryptKeyError{
@@ -1015,7 +1049,7 @@ func decryptKey(key keys.MasterKey, svcs []keyservice.KeyServiceClient) ([]byte,
 		if part == nil {
 			var rsp *keyservice.DecryptResponse
 			rsp, err = svc.Decrypt(
-				context.Background(),
+				ctx,
 				&keyservice.DecryptRequest{
 					Ciphertext: key.EncryptedDataKey(),
 					Key:        &svcKey,
@@ -1035,7 +1069,13 @@ func decryptKey(key keys.MasterKey, svcs []keyservice.KeyServiceClient) ([]byte,
 // GetDataKey retrieves the data key from the first MasterKey in the Metadata's KeySources that's able to return it,
 // using the local KeyService
 func (m Metadata) GetDataKey() ([]byte, error) {
-	return m.GetDataKeyWithKeyServices([]keyservice.KeyServiceClient{
+	return m.GetDataKeyCtx(context.Background())
+}
+
+// GetDataKeyCtx is the context-aware sibling of [Metadata.GetDataKey]. Uses
+// the local KeyService and the supplied ctx for cancellation.
+func (m Metadata) GetDataKeyCtx(ctx context.Context) ([]byte, error) {
+	return m.GetDataKeyCtxWithKeyServices(ctx, []keyservice.KeyServiceClient{
 		keyservice.NewLocalClient(),
 	}, nil)
 }
