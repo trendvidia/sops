@@ -3,6 +3,7 @@ package age
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -240,7 +241,22 @@ func formatError(msg string, err error, errs errSet, unusedLocations []string) e
 
 // Decrypt decrypts the EncryptedKey with the parsed or loaded identities, and
 // returns the result.
+//
+// Consider using DecryptContext instead.
 func (key *MasterKey) Decrypt() ([]byte, error) {
+	return key.DecryptContext(context.Background())
+}
+
+// DecryptContext decrypts the EncryptedKey with the parsed or loaded
+// identities, and returns the result. age decryption is purely local — the
+// ctx is accepted for API symmetry with KMS-backed providers but the actual
+// decrypt does not honor cancellation (it runs in-memory in microseconds).
+func (key *MasterKey) DecryptContext(ctx context.Context) ([]byte, error) {
+	_ = ctx // local crypto; nothing to cancel.
+	return key.decryptInternal()
+}
+
+func (key *MasterKey) decryptInternal() ([]byte, error) {
 	var errs errSet
 	var unusedLocations []string
 	if len(key.parsedIdentities) == 0 {
