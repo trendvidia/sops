@@ -724,22 +724,35 @@ func (tree Tree) Decrypt(key []byte, cipher Cipher) (string, error) {
 
 // GenerateDataKey generates a new random data key and encrypts it with all MasterKeys.
 func (tree Tree) GenerateDataKey() ([]byte, []error) {
+	return tree.GenerateDataKeyCtx(context.Background())
+}
+
+// GenerateDataKeyCtx is the context-aware sibling of [Tree.GenerateDataKey].
+// The ctx propagates into the keyservice.Encrypt calls that encrypt the new
+// data key with each MasterKey.
+func (tree Tree) GenerateDataKeyCtx(ctx context.Context) ([]byte, []error) {
 	newKey := make([]byte, 32)
 	_, err := rand.Read(newKey)
 	if err != nil {
 		return nil, []error{fmt.Errorf("Could not generate random key: %s", err)}
 	}
-	return newKey, tree.Metadata.UpdateMasterKeys(newKey)
+	return newKey, tree.Metadata.UpdateMasterKeysCtx(ctx, newKey)
 }
 
 // GenerateDataKeyWithKeyServices generates a new random data key and encrypts it with all MasterKeys.
 func (tree *Tree) GenerateDataKeyWithKeyServices(svcs []keyservice.KeyServiceClient) ([]byte, []error) {
+	return tree.GenerateDataKeyCtxWithKeyServices(context.Background(), svcs)
+}
+
+// GenerateDataKeyCtxWithKeyServices is the context-aware sibling of
+// [Tree.GenerateDataKeyWithKeyServices].
+func (tree *Tree) GenerateDataKeyCtxWithKeyServices(ctx context.Context, svcs []keyservice.KeyServiceClient) ([]byte, []error) {
 	newKey := make([]byte, 32)
 	_, err := rand.Read(newKey)
 	if err != nil {
 		return nil, []error{fmt.Errorf("Could not generate random key: %s", err)}
 	}
-	return newKey, tree.Metadata.UpdateMasterKeysWithKeyServices(newKey, svcs)
+	return newKey, tree.Metadata.UpdateMasterKeysCtxWithKeyServices(ctx, newKey, svcs)
 }
 
 // Metadata holds information about a file encrypted by sops
@@ -834,6 +847,18 @@ func (m *Metadata) MasterKeyCount() int {
 
 // UpdateMasterKeysWithKeyServices encrypts the data key with all master keys using the provided key services
 func (m *Metadata) UpdateMasterKeysWithKeyServices(dataKey []byte, svcs []keyservice.KeyServiceClient) (errs []error) {
+	return m.UpdateMasterKeysCtxWithKeyServices(context.Background(), dataKey, svcs)
+}
+
+// UpdateMasterKeysCtxWithKeyServices is the context-aware sibling of
+// [Metadata.UpdateMasterKeysWithKeyServices]. The ctx propagates to each
+// keyservice.Encrypt call so cancellation aborts in-flight KMS round-trips
+// when the keyservice honors ctx (gRPC-served keyservices natively; the
+// in-process default keyservice does as of v3.13.2).
+func (m *Metadata) UpdateMasterKeysCtxWithKeyServices(ctx context.Context, dataKey []byte, svcs []keyservice.KeyServiceClient) (errs []error) {
+	if err := ctx.Err(); err != nil {
+		return []error{fmt.Errorf("UpdateMasterKeys: context already cancelled: %w", err)}
+	}
 	if len(svcs) == 0 {
 		return []error{
 			fmt.Errorf("no key services provided, cannot update master keys"),
@@ -876,11 +901,15 @@ func (m *Metadata) UpdateMasterKeysWithKeyServices(dataKey []byte, svcs []keyser
 			}
 		}
 		for _, key := range group {
+			if err := ctx.Err(); err != nil {
+				errs = append(errs, fmt.Errorf("UpdateMasterKeys: context cancelled mid-iteration: %w", err))
+				return
+			}
 			svcKey := keyservice.KeyFromMasterKey(key)
 			var keyErrs []error
 			encrypted := false
 			for _, svc := range svcs {
-				rsp, err := svc.Encrypt(context.Background(), &keyservice.EncryptRequest{
+				rsp, err := svc.Encrypt(ctx, &keyservice.EncryptRequest{
 					Key:       &svcKey,
 					Plaintext: part,
 				})
@@ -904,7 +933,13 @@ func (m *Metadata) UpdateMasterKeysWithKeyServices(dataKey []byte, svcs []keyser
 
 // UpdateMasterKeys encrypts the data key with all master keys
 func (m *Metadata) UpdateMasterKeys(dataKey []byte) (errs []error) {
-	return m.UpdateMasterKeysWithKeyServices(dataKey, []keyservice.KeyServiceClient{
+	return m.UpdateMasterKeysCtx(context.Background(), dataKey)
+}
+
+// UpdateMasterKeysCtx is the context-aware sibling of
+// [Metadata.UpdateMasterKeys]. Uses the local KeyService.
+func (m *Metadata) UpdateMasterKeysCtx(ctx context.Context, dataKey []byte) (errs []error) {
+	return m.UpdateMasterKeysCtxWithKeyServices(ctx, dataKey, []keyservice.KeyServiceClient{
 		keyservice.NewLocalClient(),
 	})
 }

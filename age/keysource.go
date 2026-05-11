@@ -161,7 +161,23 @@ func (i ParsedIdentities) ApplyToMasterKey(key *MasterKey) {
 
 // Encrypt takes a SOPS data key, encrypts it with the Recipient, and stores
 // the result in the EncryptedKey field.
+//
+// Consider using EncryptContext instead.
 func (key *MasterKey) Encrypt(dataKey []byte) error {
+	return key.EncryptContext(context.Background(), dataKey)
+}
+
+// EncryptContext takes a SOPS data key, encrypts it with the Recipient,
+// and stores the result in the EncryptedKey field. age encryption is
+// purely local — ctx is accepted for API symmetry with KMS-backed
+// providers but the actual encrypt does not honor cancellation (runs
+// in-memory in microseconds).
+func (key *MasterKey) EncryptContext(ctx context.Context, dataKey []byte) error {
+	_ = ctx // local crypto; nothing to cancel.
+	return key.encryptInternal(dataKey)
+}
+
+func (key *MasterKey) encryptInternal(dataKey []byte) error {
 	if key.parsedRecipient == nil {
 		parsedRecipient, err := parseRecipient(key.Recipient)
 		if err != nil {
