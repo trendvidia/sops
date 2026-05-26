@@ -183,7 +183,7 @@ Internal:
   internal ``decryptKeyGroupCtx`` / ``decryptKeyCtx`` thread ctx
   through the data-key acquisition path.
 * ``Metadata.UpdateMasterKeysCtx`` / ``UpdateMasterKeysCtxWithKeyServices``
-  + ``Tree.GenerateDataKeyCtx`` / ``GenerateDataKeyCtxWithKeyServices``
+  and ``Tree.GenerateDataKeyCtx`` / ``GenerateDataKeyCtxWithKeyServices``
   for the encrypt side.
 * ``Server.Decrypt`` / ``Server.Encrypt`` propagate ctx into each
   per-provider ``decryptWith*`` / ``encryptWith*`` helper, which calls

@@ -9,12 +9,12 @@ The release is performed by:
 
 1. Updating `CHANGELOG.md` and `version/version.go` via a pull request into
    `trendvidia` (the fork's default branch).
-2. Tagging the merge commit as `vX.Y.Z` (signed) and pushing the tag.
-3. The tag push triggers
+1. Tagging the merge commit as `vX.Y.Z` (signed) and pushing the tag.
+1. The tag push triggers
    [`release.yml`](../.github/workflows/release.yml), which creates a
    **draft** GitHub release pointed at the tagged commit, with notes
    auto-generated from PR titles since the previous tag.
-4. The maintainer opens the draft, polishes the prose to match the
+1. The maintainer opens the draft, polishes the prose to match the
    `CHANGELOG.md` style, and publishes from the GitHub UI.
 
 The fork ships as a Go module — `go get github.com/trendvidia/sops@vX.Y.Z`
@@ -31,14 +31,13 @@ Go-module-only consumer surface.
 
 - [ ] Ensure that all changes intended for the release are merged into
   the `trendvidia` branch and that CI is green on `trendvidia`.
-- [ ] Open a pull request that:
-  - Adds a new top-level `## X.Y.Z` section to
-    [`CHANGELOG.md`](../CHANGELOG.md) summarising changes since the
-    last release, with PR references. Follow the existing fork style
-    (narrative summary up top, bulleted detail underneath).
-  - Bumps the `Version` constant in
-    [`version/version.go`](../version/version.go) to the new version
-    number.
+- [ ] Open a pull request that adds a new top-level `## X.Y.Z` section
+  to [`CHANGELOG.md`](../CHANGELOG.md) summarising changes since the
+  last release, with PR references. Follow the existing fork style
+  (narrative summary up top, bulleted detail underneath).
+- [ ] In the same pull request, bump the `Version` constant in
+  [`version/version.go`](../version/version.go) to the new version
+  number.
 - [ ] Get approval, merge.
 
 ## Release
