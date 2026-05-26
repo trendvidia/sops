@@ -469,6 +469,25 @@ func (branch TreeBranch) walkBranch(in TreeBranch, path []string, commentsStack 
 }
 
 func (tree Tree) shouldBeEncrypted(path []string, commentsStack [][]string, isComment bool) bool {
+	// Fork policy: comments are documentation, not data. Skip
+	// encryption for comments unless the user has explicitly opted
+	// in via EncryptedCommentRegex. The upstream sops default
+	// encrypts every leaf including comments, which mangles
+	// comment-rich formats like PXF where comments describe each
+	// field's purpose and rotation history. Encrypting them
+	// destroys the documentation without protecting anything
+	// sensitive (people don't write secrets into comments).
+	//
+	// Opt-in path is preserved: setting EncryptedCommentRegex
+	// (or the directive-comment mechanism below) still encrypts
+	// matching comments, falling through this early-return.
+	if isComment && tree.Metadata.EncryptedCommentRegex == "" {
+		// Directives are always unencrypted regardless; the
+		// dedicated handling further down preserves that.
+		// Bail here so the rest of the function doesn't flip
+		// encrypted=true via default suffix/regex matches.
+		return false
+	}
 	encrypted := true
 	if tree.Metadata.UnencryptedSuffix != "" {
 		for _, v := range path {
