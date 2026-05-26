@@ -1,5 +1,54 @@
 # Changelog
 
+## 3.13.3
+
+Fork policy: comments are documentation, not data; skip encryption
+by default. Wire format unchanged. No public API changes.
+
+Bug fix:
+
+* **`shouldBeEncrypted` no longer defaults `Comment` leaves to
+  encrypted** when no comment-specific opt-in is set. Upstream's
+  default was to encrypt every leaf in the tree including comments,
+  which mangled comment-rich formats like PXF where every layer
+  file's secrets are accompanied by inline documentation. The
+  motivating regression:
+
+  ```pxf
+  # github_oauth_client_secret — rotated 2026-04
+  github_oauth_client_secret = "ghs_xxx"
+  ```
+
+  After `sops -e`, the comment became `ENC[AES256_GCM,…]` alongside
+  the value. The file was no longer reviewable by humans even when
+  they held the decryption key. The new default keeps comments
+  plaintext through encrypt/decrypt round-trips so the file stays
+  readable while values stay encrypted.
+
+  Existing rules still work for values; comments themselves are now
+  skipped unless `EncryptedCommentRegex` is set (the directive-
+  comment markers like `sops:disable` / `sops:enable` continue to
+  apply normally).
+
+  Test changes:
+  * New `TestEncryptCommentsForkPolicy` covers the new contract:
+    comments stay as `Comment{}` (not replaced by a ciphertext
+    string), regular values still encrypt.
+  * `TestEncryptComments` / `TestDecryptComments` removed — there
+    is no metadata configuration that encrypts a bare comment under
+    the new policy (`EncryptedCommentRegex` deliberately excludes
+    the comment being processed from its own match, since it's a
+    marker-style mechanism for the *following* items).
+  * `TestUnencryptedCommentRegex` preserved — the value carve-out
+    around marker comments still works; the marker's own
+    pre-encryption "before" comment in the fixture now stays
+    plaintext rather than encrypting to "erofeb".
+  * `TestUnencryptedCommentRegexFail` repurposed: the failure mode
+    it guarded against (encrypted comment matching
+    UnencryptedCommentRegex) is unreachable under fork policy.
+
+  PR #15.
+
 ## 3.13.2
 
 Context cancellation + programmatic encrypt + streaming-friendly I/O.
