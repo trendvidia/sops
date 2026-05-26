@@ -1,21 +1,63 @@
 # Changelog
 
-## Unreleased
+## 3.14.0
 
-Internal / infrastructure only. No wire-format, public API, or CLI
-behavior changes — consumers of `decrypt`, `encrypt`, or the `sops`
-binary see no difference from v3.13.3.
+Adds first-class support for age key files holding multiple named
+secret keys, plus a CLI flag to select among them. Backwards-compatible:
+the legacy one-key-per-line key file format still parses as before, and
+existing consumers of `decrypt`, `encrypt`, and the public `age` package
+see no breaking change.
+
+New features:
+
+* **PXF-formatted multi-key age files.** When `SOPS_AGE_KEY_FILE` ends
+  in `.pxf`, sops parses it as a structured proto message — schema in
+  [`age/keypb/agekeys.proto`](age/keypb/agekeys.proto) — holding a map
+  of human-readable names to age secret keys plus an optional `default`
+  entry. On encrypt, the `default` entry's public key is used as the
+  recipient when `--age` is omitted. On decrypt the behavior is
+  unchanged: all secrets are loaded and the age library matches them
+  against the file's stanzas as before. Anything that doesn't end in
+  `.pxf` keeps using the legacy line-based parser, so existing key
+  files continue to work without changes. PR #24.
+
+* **`--age-key-name` / `SOPS_AGE_KEY_NAME`.** Selects a specific
+  named key from a `.pxf` key file as the encryption recipient. Useful
+  for multi-environment setups (e.g. `--age-key-name production`) and
+  for automation that fetches a single key file from a secret store
+  rather than a single secret per environment. Encrypt-time precedence:
+    1. `--age` / `-a` / `SOPS_AGE_RECIPIENTS` (explicit Bech32 wins)
+    1. `--age-key-name` / `SOPS_AGE_KEY_NAME`
+    1. The `.pxf` file's `default` entry
+    1. `.sops.yaml` config file
+  PR #25.
+
+* **`github.com/getsops/sops/v3/age/keypb` public package.** Consumers
+  (e.g. the pxfed editor) can import this package to read `.pxf` key
+  files and look up name↔recipient mappings without depending on the
+  age driver: `ReadFile`, `(*AgeKeyFile).Recipients`,
+  `RecipientForName`, `NameForRecipient`. PRs #24 and #25.
+
+* **Hybrid post-quantum identities supported on the new paths.**
+  `AGE-SECRET-KEY-PQ-1...` secrets can sit alongside X25519 secrets in
+  a `.pxf` file and be used as the `default` or as the
+  `--age-key-name` target — recipient derivation uses
+  `age.HybridIdentity.Recipient()`. Plugin identities (`AGE-PLUGIN-*`)
+  are silently skipped in lookups; their recipient derivation requires
+  the plugin's IPC protocol, which isn't wired in yet. PR #25.
+
+Infrastructure:
 
 * **Release workflow rewritten.** The upstream GoReleaser pipeline
   (cross-platform binaries, ghcr.io + Quay.io container pushes, SBOMs,
   SLSA provenance, Cosign signing) doesn't fit a Go-module-only fork —
-  none of those artifacts have a consumer here, and the Quay credentials
-  the workflow expected weren't configured. On a `v*` tag push the
-  workflow now creates a **draft** GitHub release pointed at the tagged
-  commit, with notes auto-generated from PR titles since the previous
-  tag. The maintainer polishes the prose and publishes from the GitHub
-  UI. Single step, single auto-provided `GITHUB_TOKEN`, no secrets.
-  PR #17.
+  none of those artifacts have a consumer here, and the Quay
+  credentials the workflow expected weren't configured. On a `v*` tag
+  push the workflow now creates a draft GitHub release pointed at the
+  tagged commit, with notes auto-generated from PR titles since the
+  previous tag. The maintainer polishes the prose and publishes from
+  the GitHub UI. Single step, single auto-provided `GITHUB_TOKEN`, no
+  secrets. PR #17.
 
 * **CI workflows repointed to `trendvidia`.** `cli.yml`, `codeql.yml`,
   `linters.yml`, and `docs.yml` were inherited from upstream and
@@ -34,15 +76,15 @@ binary see no difference from v3.13.3.
   Dropped to one build (`linux/amd64 × Go 1.26`). Per-PR job count:
   ~13 → 3. PR #19.
 
-* **`protowire-go` pinned to published v1.0.0; local-replace removed.**
+* **`protowire-go` pinned to published v1.0.0; local replace removed.**
   `go.mod` required `protowire-go v0.70.3` (a version never pushed as
   a public tag) and routed resolution through
   `replace github.com/trendvidia/protowire-go => ../protowire-go` —
   resolvable only on the maintainer's local workspace. Anyone fetching
   the module fresh, or any CI without a sibling protowire-go checkout,
   hit `reading ../protowire-go/go.mod: no such file or directory` at
-  `make vendor`. Pinned to the latest published tag, which is the
-  same content the local sibling was at, so vendored sources were
+  `make vendor`. Pinned to the latest published tag, which is the same
+  content the local sibling was at, so vendored sources were
   unchanged. PR #20.
 
 * **Proto codegen migrated to buf.** Replaced raw `protoc` and bespoke
@@ -52,7 +94,7 @@ binary see no difference from v3.13.3.
   previous versions. `make generate` now invokes `buf generate`.
   Generated code in `keyservice/` is byte-identical apart from header
   strings (`protoc v5.28.3` → `protoc (unknown)`) and import ordering.
-  Prerequisite for the upcoming `age/keypb/` schema. PR #21.
+  Prerequisite for the `age/keypb/` schema added in #24. PR #21.
 
 * **Rust functional-tests aligned with the v3.13.3 comment policy.**
   Three tests (`encrypt_comments`, `encrypt_comments_list`,
@@ -62,6 +104,10 @@ binary see no difference from v3.13.3.
   test `encrypt_comments_stay_plaintext_fork_policy` mirroring the
   Go-side `TestEncryptCommentsForkPolicy` contract added in PR #15.
   PR #22.
+
+* **`docs/release.md` rewritten and CHANGELOG `Unreleased` section
+  introduced** — the previous release procedure still described the
+  upstream GoReleaser-driven pipeline. PR #23.
 
 ## 3.13.3
 
