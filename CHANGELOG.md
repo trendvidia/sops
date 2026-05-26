@@ -1,5 +1,68 @@
 # Changelog
 
+## Unreleased
+
+Internal / infrastructure only. No wire-format, public API, or CLI
+behavior changes — consumers of `decrypt`, `encrypt`, or the `sops`
+binary see no difference from v3.13.3.
+
+* **Release workflow rewritten.** The upstream GoReleaser pipeline
+  (cross-platform binaries, ghcr.io + Quay.io container pushes, SBOMs,
+  SLSA provenance, Cosign signing) doesn't fit a Go-module-only fork —
+  none of those artifacts have a consumer here, and the Quay credentials
+  the workflow expected weren't configured. On a `v*` tag push the
+  workflow now creates a **draft** GitHub release pointed at the tagged
+  commit, with notes auto-generated from PR titles since the previous
+  tag. The maintainer polishes the prose and publishes from the GitHub
+  UI. Single step, single auto-provided `GITHUB_TOKEN`, no secrets.
+  PR #17.
+
+* **CI workflows repointed to `trendvidia`.** `cli.yml`, `codeql.yml`,
+  `linters.yml`, and `docs.yml` were inherited from upstream and
+  triggered on `branches: [main]`. The fork's default branch is
+  `trendvidia` and `main` is pinned at the upstream fork point, so
+  none of these workflows had ever fired on day-to-day PRs into the
+  default branch. Now they do. PR #18.
+
+* **`cli.yml` build matrix slimmed.** The matrix was
+  `{linux, darwin, windows} × {amd64, arm64} × {1.25, 1.26}` minus
+  `windows-arm64` = 11 build jobs per PR, each uploading a
+  cross-platform binary artifact. Only the linux-amd64 build was
+  consumed (by the downstream Rust functional-tests job); the other
+  10 artifacts were produced and orphaned. The fork ships as a Go
+  module, so cross-platform CI doesn't gate any binary distribution.
+  Dropped to one build (`linux/amd64 × Go 1.26`). Per-PR job count:
+  ~13 → 3. PR #19.
+
+* **`protowire-go` pinned to published v1.0.0; local-replace removed.**
+  `go.mod` required `protowire-go v0.70.3` (a version never pushed as
+  a public tag) and routed resolution through
+  `replace github.com/trendvidia/protowire-go => ../protowire-go` —
+  resolvable only on the maintainer's local workspace. Anyone fetching
+  the module fresh, or any CI without a sibling protowire-go checkout,
+  hit `reading ../protowire-go/go.mod: no such file or directory` at
+  `make vendor`. Pinned to the latest published tag, which is the
+  same content the local sibling was at, so vendored sources were
+  unchanged. PR #20.
+
+* **Proto codegen migrated to buf.** Replaced raw `protoc` and bespoke
+  `protoc-gen-go` / `protoc-gen-go-grpc` install targets with
+  [buf](https://buf.build) and its remote plugins
+  (`buf.build/protocolbuffers/go`, `buf.build/grpc/go`) pinned to the
+  previous versions. `make generate` now invokes `buf generate`.
+  Generated code in `keyservice/` is byte-identical apart from header
+  strings (`protoc v5.28.3` → `protoc (unknown)`) and import ordering.
+  Prerequisite for the upcoming `age/keypb/` schema. PR #21.
+
+* **Rust functional-tests aligned with the v3.13.3 comment policy.**
+  Three tests (`encrypt_comments`, `encrypt_comments_list`,
+  `decrypt_comments`) asserted upstream's comment-encryption behavior,
+  which v3.13.3 made unreachable. Once CI started firing on PRs (after
+  PR #18) they were permanent reds. Replaced with a single positive
+  test `encrypt_comments_stay_plaintext_fork_policy` mirroring the
+  Go-side `TestEncryptCommentsForkPolicy` contract added in PR #15.
+  PR #22.
+
 ## 3.13.3
 
 Fork policy: comments are documentation, not data; skip encryption
@@ -120,7 +183,7 @@ Internal:
   internal ``decryptKeyGroupCtx`` / ``decryptKeyCtx`` thread ctx
   through the data-key acquisition path.
 * ``Metadata.UpdateMasterKeysCtx`` / ``UpdateMasterKeysCtxWithKeyServices``
-  + ``Tree.GenerateDataKeyCtx`` / ``GenerateDataKeyCtxWithKeyServices``
+  and ``Tree.GenerateDataKeyCtx`` / ``GenerateDataKeyCtxWithKeyServices``
   for the encrypt side.
 * ``Server.Decrypt`` / ``Server.Encrypt`` propagate ctx into each
   per-provider ``decryptWith*`` / ``encryptWith*`` helper, which calls

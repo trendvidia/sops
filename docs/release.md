@@ -1,75 +1,86 @@
 # Release procedure
 
-This document describes the procedure for releasing a new version of SOPS. It
-is intended for maintainers of the project, but may be useful for anyone
-interested in the release process.
+This document describes the procedure for releasing a new version of the
+`trendvidia/sops` fork. It is intended for maintainers of the project.
 
 ## Overview
 
-The release is performed by creating a signed tag for the release, and pushing
-it to GitHub. This will automatically trigger a GitHub Actions workflow that
-builds the binaries, packages, SBOMs, and other artifacts for the release
-using [GoReleaser](https://goreleaser.com), and uploads them to GitHub.
+The release is performed by:
 
-The configuration for GoReleaser is in the file
-[`.goreleaser.yaml`](../.goreleaser.yaml). The configuration for the GitHub
-Actions workflow is in the file
-[`release.yml`](../.github/workflows/release.yml).
+1. Updating `CHANGELOG.md` and `version/version.go` via a pull request into
+   `trendvidia` (the fork's default branch).
+1. Tagging the merge commit as `vX.Y.Z` (signed) and pushing the tag.
+1. The tag push triggers
+   [`release.yml`](../.github/workflows/release.yml), which creates a
+   **draft** GitHub release pointed at the tagged commit, with notes
+   auto-generated from PR titles since the previous tag.
+1. The maintainer opens the draft, polishes the prose to match the
+   `CHANGELOG.md` style, and publishes from the GitHub UI.
 
-This configuration is quite sophisticated, and ensures at least the following:
+The fork ships as a Go module — `go get github.com/trendvidia/sops@vX.Y.Z`
+resolves as soon as the tag is on the remote, independently of whether
+the GitHub release has been published. Publishing the release is for
+human-facing notes; it is not on the consumer's code-distribution path.
 
-- The release is built for multiple platforms and architectures, including
-  Linux, macOS, and Windows, and for both AMD64 and ARM64.
-- The release includes multiple packages in Debian and RPM formats.
-- For every binary, a corresponding SBOM is generated and published.
-- For all binaries, a checksum file is generated and signed using
-  [Cosign](https://docs.sigstore.dev/cosign/overview/) with GitHub OIDC.
-- Both Debian and Alpine Docker multi-arch images are built and pushed to GitHub
-  Container Registry and Quay.io.
-- The container images are signed using
-  [Cosign](https://docs.sigstore.dev/cosign/overview/) with GitHub OIDC.
-- [SLSA provenance](https://slsa.dev/provenance/v0.2) metadata is generated for
-  release artifacts and container images.
+This fork intentionally dropped the upstream GoReleaser pipeline
+(cross-platform binaries, ghcr.io + Quay.io containers, SBOMs, SLSA
+provenance, Cosign signing) because none of those serve a
+Go-module-only consumer surface.
 
 ## Preparation
 
-- [ ] Ensure that all changes intended for the release are merged into the
-  `main` branch. At present, this means that all pull requests attached to the
-  milestone for the release are merged. If there are any pull requests that
-  should not be included in the release, move them to a different milestone.
-- [ ] Create a pull request to update the [`CHANGELOG.md`](../CHANGELOG.md)
-  file. This should include a summary of all changes since the last release,
-  including references to any relevant pull requests.
-- [ ] In this same pull request, update the version number in `version/version.go`
-  to the new version number.
-- [ ] Get approval for the pull request from at least one other maintainer, and
-  merge it into `main`.
-- [ ] Ensure CI passes on the `main` branch.
+- [ ] Ensure that all changes intended for the release are merged into
+  the `trendvidia` branch and that CI is green on `trendvidia`.
+- [ ] Open a pull request that adds a new top-level `## X.Y.Z` section
+  to [`CHANGELOG.md`](../CHANGELOG.md) summarising changes since the
+  last release, with PR references. Follow the existing fork style
+  (narrative summary up top, bulleted detail underneath).
+- [ ] In the same pull request, bump the `Version` constant in
+  [`version/version.go`](../version/version.go) to the new version
+  number.
+- [ ] Get approval, merge.
 
 ## Release
 
-- [ ] Ensure your local copy of the `main` branch is up-to-date:
+- [ ] Make sure your local `trendvidia` matches origin:
 
   ```sh
-  git checkout main
+  git checkout trendvidia
   git pull
   ```
 
-- [ ] Create a **signed tag** for the release, using the following command:
+- [ ] Create a **signed tag** on the merge commit:
 
   ```sh
-  git tag -s -m <version> <version>
+  git tag -s -m vX.Y.Z vX.Y.Z
   ```
 
-  where `<version>` is the version number of the release. The version number
-  should be in the form `vX.Y.Z`, where `X`, `Y`, and `Z` are integers. The
-  version number should be incremented according to
+  Where `X`, `Y`, `Z` are integers per
   [semantic versioning](https://semver.org/).
-- [ ] Push the tag to GitHub:
+
+- [ ] Push the tag:
 
   ```sh
-  git push origin <version>
+  git push origin vX.Y.Z
   ```
 
-- [ ] Ensure the release is built successfully on GitHub Actions. This will
-  automatically create a release on GitHub.
+- [ ] Wait for the
+  [release workflow](../.github/workflows/release.yml) to run
+  (~10 seconds). It creates a draft release at
+  <https://github.com/trendvidia/sops/releases>.
+- [ ] Open the draft. Replace the auto-generated PR-title list with
+  the prose section you wrote in `CHANGELOG.md` for this version.
+  Click **Publish**.
+
+## If the draft doesn't appear
+
+Check <https://github.com/trendvidia/sops/actions> for a failed
+`Release` run. The workflow is single-step and only needs the
+auto-provided `GITHUB_TOKEN`, so failures are almost always one of:
+
+- The tag wasn't actually pushed (verify with
+  `git ls-remote --tags origin`).
+- The release already exists for this tag (delete it from the GitHub
+  UI and re-push the tag to retrigger).
+- A draft from a previous attempt is hiding — drafts only show in the
+  releases UI when filtered to include drafts.
