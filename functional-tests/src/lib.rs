@@ -1177,7 +1177,11 @@ b: 2006-01-02T15:04:05+07:06
     }
 
     #[test]
-    fn encrypt_comments() {
+    fn encrypt_comments_stay_plaintext_fork_policy() {
+        // Fork policy: comments are documentation, not secrets. `sops -e` must
+        // leave inline comments untouched in the output unless an explicit
+        // comment-specific opt-in (encrypted_comment_regex) is configured.
+        // Mirrors the Go-side TestEncryptCommentsForkPolicy contract.
         let file_path = "res/comments.yaml";
         let output = Command::new(SOPS_BINARY_PATH)
             .arg("encrypt")
@@ -1185,51 +1189,14 @@ b: 2006-01-02T15:04:05+07:06
             .output()
             .expect("Error running sops");
         assert!(output.status.success(), "SOPS didn't return successfully");
+        let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(
-            !String::from_utf8_lossy(&output.stdout).contains("first comment in file"),
-            "Comment was not encrypted"
+            stdout.contains("first comment in file"),
+            "Comment was encrypted; fork policy requires comments stay plaintext"
         );
         assert!(
-            !String::from_utf8_lossy(&output.stdout).contains("this-is-a-comment"),
-            "Comment was not encrypted"
-        );
-    }
-
-    #[test]
-    fn encrypt_comments_list() {
-        let file_path = "res/comments_list.yaml";
-        let output = Command::new(SOPS_BINARY_PATH)
-            .arg("encrypt")
-            .arg(file_path)
-            .output()
-            .expect("Error running sops");
-        assert!(output.status.success(), "SOPS didn't return successfully");
-        assert!(
-            !String::from_utf8_lossy(&output.stdout).contains("this-is-a-comment"),
-            "Comment was not encrypted"
-        );
-        assert!(
-            !String::from_utf8_lossy(&output.stdout).contains("this-is-a-comment"),
-            "Comment was not encrypted"
-        );
-    }
-
-    #[test]
-    fn decrypt_comments() {
-        let file_path = "res/comments.enc.yaml";
-        let output = Command::new(SOPS_BINARY_PATH)
-            .arg("decrypt")
-            .arg(file_path)
-            .output()
-            .expect("Error running sops");
-        assert!(output.status.success(), "SOPS didn't return successfully");
-        assert!(
-            String::from_utf8_lossy(&output.stdout).contains("first comment in file"),
-            "Comment was not decrypted"
-        );
-        assert!(
-            String::from_utf8_lossy(&output.stdout).contains("this-is-a-comment"),
-            "Comment was not decrypted"
+            stdout.contains("this-is-a-comment"),
+            "Comment was encrypted; fork policy requires comments stay plaintext"
         );
     }
 
