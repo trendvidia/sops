@@ -20,11 +20,8 @@ SYFT_VERSION        ?= v0.87.0
 GORELEASER          := $(BIN_DIR)/goreleaser
 GORELEASER_VERSION  ?= v1.20.0
 
-PROTOC_GO           := $(BIN_DIR)/protoc-gen-go
-PROTOC_GO_VERSION   ?= v1.35.2
-
-PROTOC_GO_GRPC      := $(BIN_DIR)/protoc-gen-go-grpc
-PROTOC_GO_GRPC_VERSION ?= v1.5.1
+BUF                 := $(BIN_DIR)/buf
+BUF_VERSION         ?= v1.45.0
 
 RSTCHECK            := $(shell command -v rstcheck)
 MARKDOWNLINT        := $(shell command -v mdl)
@@ -80,11 +77,9 @@ showcoverage: test
 	$(GO) tool cover -html=profile.out
 
 .PHONY: generate
-generate: install-protoc-go install-protoc-go-grpc keyservice/keyservice.pb.go
+generate: install-buf
+	$(BUF) generate
 	$(GO) generate
-
-%.pb.go: %.proto
-	protoc --plugin gen-go=$(PROTOC_GO) --plugin gen-go-grpc=$(PLUGIN_GO_GRPC) --go-grpc_opt=require_unimplemented_servers=false --go-grpc_out=. --go_out=. $<
 
 .PHONY: functional-tests
 functional-tests:
@@ -118,13 +113,9 @@ install-goreleaser:
 install-syft:
 	$(call go-install-tool,$(SYFT),github.com/anchore/syft/cmd/syft@$(SYFT_VERSION),$(SYFT_VERSION))
 
-.PHONY: install-protoc-go
-install-protoc-go:
-	$(call go-install-tool,$(PROTOC_GO),google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GO_VERSION),$(PROTOC_GO_VERSION))
-
-.PHONY: install-protoc-go-grpc
-install-protoc-go-grpc:
-	$(call go-install-tool,$(PROTOC_GO_GRPC),google.golang.org/grpc/cmd/protoc-gen-go-grpc@$(PROTOC_GO_GRPC_VERSION),$(PROTOC_GO_GRPC_VERSION))
+.PHONY: install-buf
+install-buf:
+	$(call go-install-tool,$(BUF),github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION),$(BUF_VERSION))
 
 # go-install-tool will 'go install' any package $2 and install it to $1.
 define go-install-tool
