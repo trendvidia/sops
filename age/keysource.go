@@ -20,6 +20,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 
+	"github.com/getsops/sops/v3/age/keypb"
 	"github.com/getsops/sops/v3/logging"
 	"github.com/google/shlex"
 )
@@ -455,14 +456,26 @@ func (key *MasterKey) loadIdentities() (ParsedIdentities, []string, errSet) {
 	}
 
 	if ageKeyFile, ok := os.LookupEnv(SopsAgeKeyFileEnv); ok {
-		f, err := os.Open(ageKeyFile)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("failed to open %s file: %w", SopsAgeKeyFileEnv, err))
+		if strings.HasSuffix(ageKeyFile, keypb.FileExtension) {
+			ids, err := loadPXFIdentities(ageKeyFile)
+			if err != nil {
+				errs = append(errs, err)
+			} else {
+				identities = append(identities, ids...)
+				if len(ids) == 0 {
+					unusedLocations = append(unusedLocations, SopsAgeKeyFileEnv)
+				}
+			}
 		} else {
-			defer f.Close()
-			readers[SopsAgeKeyFileEnv] = identityReader{
-				reader:                   f,
-				allowMultipleKeysPerLine: false,
+			f, err := os.Open(ageKeyFile)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("failed to open %s file: %w", SopsAgeKeyFileEnv, err))
+			} else {
+				defer f.Close()
+				readers[SopsAgeKeyFileEnv] = identityReader{
+					reader:                   f,
+					allowMultipleKeysPerLine: false,
+				}
 			}
 		}
 	} else {
@@ -602,6 +615,67 @@ func parseIdentity(s string) (age.Identity, error) {
 	default:
 		return nil, fmt.Errorf("unknown identity type")
 	}
+}
+
+// loadPXFIdentities reads a PXF-formatted age key file and parses every
+// entry in its `keys` map as an age identity. The file's `default`
+// field is ignored here — defaults are an encrypt-side concept,
+// surfaced via DefaultRecipientFromKeyFile.
+func loadPXFIdentities(path string) (ParsedIdentities, error) {
+	f, err := keypb.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var ids ParsedIdentities
+	for name, secret := range f.Keys {
+		id, err := parseIdentity(secret)
+		if err != nil {
+			return nil, fmt.Errorf("age key file %q: parsing key %q: %w", path, name, err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+// DefaultRecipientFromKeyFile returns the Bech32-encoded age public
+// key of the "default" entry in SOPS_AGE_KEY_FILE, when that env var
+// points to a PXF-formatted key file (extension `.pxf`) with a default
+// set.
+//
+// Returns "" with a nil error in three benign cases:
+//   - SOPS_AGE_KEY_FILE is unset;
+//   - the file's extension is not `.pxf` (legacy line-based format);
+//   - the file is PXF but has no `default` field.
+//
+// Returns an error if the file is PXF-extension but malformed, if the
+// named default key is missing from the `keys` map, or if the default
+// key is not an X25519 identity (recipient derivation for plugin / SSH
+// / hybrid identities is not yet supported here).
+func DefaultRecipientFromKeyFile() (string, error) {
+	path, ok := os.LookupEnv(SopsAgeKeyFileEnv)
+	if !ok || !strings.HasSuffix(path, keypb.FileExtension) {
+		return "", nil
+	}
+	f, err := keypb.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	if f.Default == "" {
+		return "", nil
+	}
+	secret, ok := f.Keys[f.Default]
+	if !ok {
+		return "", fmt.Errorf("age key file %q: default %q not in keys", path, f.Default)
+	}
+	id, err := parseIdentity(secret)
+	if err != nil {
+		return "", fmt.Errorf("age key file %q: parsing default key %q: %w", path, f.Default, err)
+	}
+	x, ok := id.(*age.X25519Identity)
+	if !ok {
+		return "", fmt.Errorf("age key file %q: default key %q is not an X25519 identity; recipient derivation unsupported", path, f.Default)
+	}
+	return x.Recipient().String(), nil
 }
 
 // parseSSHIdentityFromPrivateKeyCmdOutput returns an age.Identity from the given
