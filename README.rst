@@ -273,7 +273,7 @@ When decrypting a file, SOPS will attempt to source the SSH private key as follo
 Note that only ``ssh-rsa`` and ``ssh-ed25519`` are supported.
 
 Using a PXF multi-key file
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+**************************
 
 If your **SOPS_AGE_KEY_FILE** path ends in ``.pxf``, SOPS parses it as a
 structured PXF-encoded message holding a map of named secret keys with an
