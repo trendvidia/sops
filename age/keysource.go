@@ -649,8 +649,9 @@ func loadPXFIdentities(path string) (ParsedIdentities, error) {
 //
 // Returns an error if the file is PXF-extension but malformed, if the
 // named default key is missing from the `keys` map, or if the default
-// key is not an X25519 identity (recipient derivation for plugin / SSH
-// / hybrid identities is not yet supported here).
+// key's secret cannot be derived into a recipient (i.e. it is a plugin
+// identity — plugin recipient derivation requires the plugin's IPC
+// protocol, which is out of scope here).
 func DefaultRecipientFromKeyFile() (string, error) {
 	path, ok := os.LookupEnv(SopsAgeKeyFileEnv)
 	if !ok || !strings.HasSuffix(path, keypb.FileExtension) {
@@ -663,19 +664,47 @@ func DefaultRecipientFromKeyFile() (string, error) {
 	if f.Default == "" {
 		return "", nil
 	}
-	secret, ok := f.Keys[f.Default]
+	return recipientFromAgeKeyFile(path, f, f.Default, "default")
+}
+
+// RecipientFromKeyFileByName resolves `name` against SOPS_AGE_KEY_FILE
+// (which must be PXF-formatted, ending in .pxf) and returns the
+// Bech32-encoded age public key of that entry. Backs the
+// --age-key-name / SOPS_AGE_KEY_NAME CLI surface.
+//
+// Errors unconditionally if SOPS_AGE_KEY_FILE is unset, the path
+// doesn't end in .pxf, the file is malformed, the named entry isn't
+// present, or its secret can't be derived (plugin identity).
+func RecipientFromKeyFileByName(name string) (string, error) {
+	path, ok := os.LookupEnv(SopsAgeKeyFileEnv)
 	if !ok {
-		return "", fmt.Errorf("age key file %q: default %q not in keys", path, f.Default)
+		return "", fmt.Errorf("--age-key-name requires %s to be set", SopsAgeKeyFileEnv)
 	}
-	id, err := parseIdentity(secret)
+	if !strings.HasSuffix(path, keypb.FileExtension) {
+		return "", fmt.Errorf("--age-key-name requires %s to end in %s (got %q)", SopsAgeKeyFileEnv, keypb.FileExtension, path)
+	}
+	f, err := keypb.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("age key file %q: parsing default key %q: %w", path, f.Default, err)
+		return "", err
 	}
-	x, ok := id.(*age.X25519Identity)
-	if !ok {
-		return "", fmt.Errorf("age key file %q: default key %q is not an X25519 identity; recipient derivation unsupported", path, f.Default)
+	return recipientFromAgeKeyFile(path, f, name, "key")
+}
+
+// recipientFromAgeKeyFile is the shared body of
+// DefaultRecipientFromKeyFile and RecipientFromKeyFileByName. `label`
+// is "default" or "key", used to vary the error wording.
+func recipientFromAgeKeyFile(path string, f *keypb.AgeKeyFile, name, label string) (string, error) {
+	if _, ok := f.Keys[name]; !ok {
+		return "", fmt.Errorf("age key file %q: %s %q not in keys", path, label, name)
 	}
-	return x.Recipient().String(), nil
+	r, err := f.RecipientForName(name)
+	if err != nil {
+		return "", fmt.Errorf("age key file %q: parsing %s %q: %w", path, label, name, err)
+	}
+	if r == "" {
+		return "", fmt.Errorf("age key file %q: %s %q recipient cannot be derived (plugin identities unsupported here)", path, label, name)
+	}
+	return r, nil
 }
 
 // parseSSHIdentityFromPrivateKeyCmdOutput returns an age.Identity from the given
