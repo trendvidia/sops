@@ -2,9 +2,9 @@ name: "CodeQL"
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "trendvidia" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "trendvidia" ]
     # Ignore changes to common non-code files.
     paths-ignore:
       - '**/*.md'

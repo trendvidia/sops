@@ -3,10 +3,10 @@ name: Linters
 on:
   push:
     branches:
-      - main
+      - trendvidia
   pull_request:
     branches:
-      - main
+      - trendvidia
     # Only run when Rust version or linted files change
     paths:
       - 'rust-toolchain.toml'
