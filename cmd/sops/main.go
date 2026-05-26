@@ -2479,8 +2479,20 @@ func keyGroups(c *cli.Context, file string, optionalConfig *config.Config) ([]so
 			pgpKeys = append(pgpKeys, k)
 		}
 	}
-	if c.String("age") != "" {
-		ageKeys, err := age.MasterKeysFromRecipients(c.String("age"))
+	ageRecipients := c.String("age")
+	if ageRecipients == "" {
+		// Fall back to the "default" entry in a PXF-formatted age key
+		// file (SOPS_AGE_KEY_FILE ending in .pxf), if one is set.
+		// Returns "" if no such default is available, in which case
+		// the regular config-file path below picks up.
+		defaultRecipient, err := age.DefaultRecipientFromKeyFile()
+		if err != nil {
+			return nil, err
+		}
+		ageRecipients = defaultRecipient
+	}
+	if ageRecipients != "" {
+		ageKeys, err := age.MasterKeysFromRecipients(ageRecipients)
 		if err != nil {
 			return nil, err
 		}
@@ -2488,7 +2500,7 @@ func keyGroups(c *cli.Context, file string, optionalConfig *config.Config) ([]so
 			ageMasterKeys = append(ageMasterKeys, k)
 		}
 	}
-	if c.String("kms") == "" && c.String("pgp") == "" && c.String("gcp-kms") == "" && c.String("hckms") == "" && c.String("azure-kv") == "" && c.String("hc-vault-transit") == "" && c.String("age") == "" {
+	if c.String("kms") == "" && c.String("pgp") == "" && c.String("gcp-kms") == "" && c.String("hckms") == "" && c.String("azure-kv") == "" && c.String("hc-vault-transit") == "" && ageRecipients == "" {
 		conf := optionalConfig
 		var err error
 		if conf == nil {

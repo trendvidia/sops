@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+option go_package = "./keypb";
+
+// AgeKeyFile is the PXF-formatted on-disk representation of an age key
+// file that holds one or more named age secret keys. The "default"
+// entry is used by sops at encrypt time when no recipient is supplied
+// via -a / --age / SOPS_AGE_RECIPIENTS.
+//
+// On the decrypt path the "default" field is irrelevant — sops loads
+// all `keys` values as identities and the age library matches them
+// against the file's stanzas.
+message AgeKeyFile {
+  // Name of the entry in `keys` whose public key is used as the
+  // encryption recipient when none is supplied on the command line.
+  // Empty means no default; encrypt-time selection then falls back to
+  // existing behavior (require -a / SOPS_AGE_RECIPIENTS / config).
+  string default = 1;
+
+  // Map of human-readable name to a Bech32-encoded age secret key
+  // (e.g. AGE-SECRET-KEY-1...). Names are arbitrary; sops does not
+  // interpret them.
+  map<string, string> keys = 2;
+}
