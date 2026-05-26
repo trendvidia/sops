@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"filippo.io/age"
+
 	"github.com/getsops/sops/v3/age/keypb"
 	"github.com/trendvidia/protowire-go/encoding/pxf"
 )
@@ -153,5 +155,104 @@ func TestDefaultRecipientFromKeyFile_DefaultMissingFromKeys(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "ghost") {
 		t.Errorf("error should mention the missing name; got: %v", err)
+	}
+}
+
+func TestDefaultRecipientFromKeyFile_Hybrid(t *testing.T) {
+	// Refactoring through keypb.RecipientForName gave hybrid support
+	// for free. Verify by setting a hybrid identity as the default.
+	hybridID, err := age.ParseHybridIdentity(mockHybridIdentity)
+	if err != nil {
+		t.Fatalf("parse hybrid identity fixture: %v", err)
+	}
+	want := hybridID.Recipient().String()
+
+	path := writePXFKeyFile(t, &keypb.AgeKeyFile{
+		Default: "pq",
+		Keys: map[string]string{
+			"pq": mockHybridIdentity,
+		},
+	})
+	t.Setenv(SopsAgeKeyFileEnv, path)
+
+	got, err := DefaultRecipientFromKeyFile()
+	if err != nil {
+		t.Fatalf("DefaultRecipientFromKeyFile: %v", err)
+	}
+	if got != want {
+		t.Errorf("hybrid default recipient: got %q, want %q", got, want)
+	}
+}
+
+func TestRecipientFromKeyFileByName_Success(t *testing.T) {
+	path := writePXFKeyFile(t, &keypb.AgeKeyFile{
+		Default: "primary",
+		Keys: map[string]string{
+			"primary":   mockIdentity,
+			"secondary": mockOtherIdentity,
+		},
+	})
+	t.Setenv(SopsAgeKeyFileEnv, path)
+
+	got, err := RecipientFromKeyFileByName("secondary")
+	if err != nil {
+		t.Fatalf("RecipientFromKeyFileByName: %v", err)
+	}
+	// `secondary` is mockOtherIdentity; derive its expected recipient
+	// at runtime to avoid hard-coding a mirror constant.
+	id, err := age.ParseX25519Identity(mockOtherIdentity)
+	if err != nil {
+		t.Fatalf("parse mockOtherIdentity: %v", err)
+	}
+	if got != id.Recipient().String() {
+		t.Errorf("recipient: got %q, want %q", got, id.Recipient().String())
+	}
+}
+
+func TestRecipientFromKeyFileByName_NameNotInKeys(t *testing.T) {
+	path := writePXFKeyFile(t, &keypb.AgeKeyFile{
+		Keys: map[string]string{
+			"primary": mockIdentity,
+		},
+	})
+	t.Setenv(SopsAgeKeyFileEnv, path)
+
+	_, err := RecipientFromKeyFileByName("ghost")
+	if err == nil {
+		t.Fatal("RecipientFromKeyFileByName missing name: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "ghost") {
+		t.Errorf("error should mention the missing name; got: %v", err)
+	}
+}
+
+func TestRecipientFromKeyFileByName_EnvUnset(t *testing.T) {
+	os.Unsetenv(SopsAgeKeyFileEnv)
+
+	_, err := RecipientFromKeyFileByName("anything")
+	if err == nil {
+		t.Fatal("RecipientFromKeyFileByName with env unset: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), SopsAgeKeyFileEnv) {
+		t.Errorf("error should mention %s; got: %v", SopsAgeKeyFileEnv, err)
+	}
+}
+
+func TestRecipientFromKeyFileByName_NotPXFExtension(t *testing.T) {
+	// Path doesn't end in .pxf; --age-key-name has no meaning without
+	// a PXF-formatted file.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "keys.txt")
+	if err := os.WriteFile(path, []byte(mockIdentity+"\n"), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	t.Setenv(SopsAgeKeyFileEnv, path)
+
+	_, err := RecipientFromKeyFileByName("anything")
+	if err == nil {
+		t.Fatal("RecipientFromKeyFileByName on non-pxf: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), ".pxf") {
+		t.Errorf("error should mention .pxf; got: %v", err)
 	}
 }

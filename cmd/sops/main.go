@@ -971,6 +971,11 @@ func main() {
 					EnvVar: "SOPS_AGE_RECIPIENTS",
 				},
 				cli.StringFlag{
+					Name:   "age-key-name",
+					Usage:  "name of a key in SOPS_AGE_KEY_FILE (.pxf) whose recipient to encrypt with; ignored if --age is set",
+					EnvVar: "SOPS_AGE_KEY_NAME",
+				},
+				cli.StringFlag{
 					Name:  "input-type",
 					Usage: "currently json, yaml, protowire, dotenv and binary are supported. If not set, sops will use the file's extension to determine the type",
 				},
@@ -1320,6 +1325,11 @@ func main() {
 					Name:   "age, a",
 					Usage:  "comma separated list of age recipients",
 					EnvVar: "SOPS_AGE_RECIPIENTS",
+				},
+				cli.StringFlag{
+					Name:   "age-key-name",
+					Usage:  "name of a key in SOPS_AGE_KEY_FILE (.pxf) whose recipient to encrypt with; ignored if --age is set",
+					EnvVar: "SOPS_AGE_KEY_NAME",
 				},
 				cli.StringFlag{
 					Name:  "input-type",
@@ -1733,6 +1743,11 @@ func main() {
 			Name:   "age, a",
 			Usage:  "comma separated list of age recipients",
 			EnvVar: "SOPS_AGE_RECIPIENTS",
+		},
+		cli.StringFlag{
+			Name:   "age-key-name",
+			Usage:  "name of a key in SOPS_AGE_KEY_FILE (.pxf) whose recipient to encrypt with; ignored if --age is set",
+			EnvVar: "SOPS_AGE_KEY_NAME",
 		},
 		cli.BoolFlag{
 			Name:  "in-place, i",
@@ -2481,10 +2496,21 @@ func keyGroups(c *cli.Context, file string, optionalConfig *config.Config) ([]so
 	}
 	ageRecipients := c.String("age")
 	if ageRecipients == "" {
-		// Fall back to the "default" entry in a PXF-formatted age key
-		// file (SOPS_AGE_KEY_FILE ending in .pxf), if one is set.
-		// Returns "" if no such default is available, in which case
-		// the regular config-file path below picks up.
+		// Precedence when --age/-a/SOPS_AGE_RECIPIENTS is empty:
+		//   1. --age-key-name / SOPS_AGE_KEY_NAME — look up named
+		//      entry in the PXF age key file.
+		//   2. PXF age key file's `default` field.
+		// If neither resolves to a recipient, fall through to the
+		// config-file path below.
+		if keyName := c.String("age-key-name"); keyName != "" {
+			r, err := age.RecipientFromKeyFileByName(keyName)
+			if err != nil {
+				return nil, err
+			}
+			ageRecipients = r
+		}
+	}
+	if ageRecipients == "" {
 		defaultRecipient, err := age.DefaultRecipientFromKeyFile()
 		if err != nil {
 			return nil, err
