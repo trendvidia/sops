@@ -253,6 +253,10 @@ The contents of this key file should be a list of age X25519 identities, one
 per line. Lines beginning with ``#`` are considered comments and ignored. Each
 identity will be tried in sequence until one is able to decrypt the data.
 
+If you need multiple named keys in a single file — for example because the
+secrets manager you fetch keys from prefers one entry over many — see
+`Using a PXF multi-key file`_ below.
+
 Encrypting with SSH keys via age is also supported by SOPS. You can use SSH public keys
 ("ssh-ed25519 AAAA...", "ssh-rsa AAAA...") as age recipients when encrypting a file.
 
@@ -267,6 +271,71 @@ When decrypting a file, SOPS will attempt to source the SSH private key as follo
 - From ``~/.ssh/id_rsa``.
 
 Note that only ``ssh-rsa`` and ``ssh-ed25519`` are supported.
+
+Using a PXF multi-key file
+**************************
+
+If your **SOPS_AGE_KEY_FILE** path ends in ``.pxf``, SOPS parses it as a
+structured PXF-encoded message holding a map of named secret keys with an
+optional ``default``. This is useful when you fetch keys from a secret store
+(e.g. Bitwarden) that prefers one entry over many, or when one user manages
+several keys and wants them named per environment.
+
+The on-disk format:
+
+.. code:: pxf
+
+    default = "production"
+    keys = {
+      "production": "AGE-SECRET-KEY-1XYZ..."
+      "staging":    "AGE-SECRET-KEY-1ABC..."
+      "personal":   "AGE-SECRET-KEY-1QQQ..."
+    }
+
+The schema is `age/keypb/agekeys.proto
+<age/keypb/agekeys.proto>`_:
+
+.. code:: proto
+
+    message AgeKeyFile {
+      string default = 1;
+      map<string, string> keys = 2;
+    }
+
+X25519 (``AGE-SECRET-KEY-1...``) and hybrid post-quantum
+(``AGE-SECRET-KEY-PQ-1...``) secrets are both supported. Plugin identities
+(``AGE-PLUGIN-*``) can be loaded for decryption but are silently skipped on
+the recipient-derivation paths (their public-key derivation requires the
+plugin's IPC protocol).
+
+**At decrypt time** all entries are loaded as identities and the age library
+matches them against the file's stanzas — same behavior as a line-based
+``keys.txt`` with multiple keys.
+
+**At encrypt time** the recipient is selected with the following precedence:
+
+#. ``--age`` / ``-a`` / **SOPS_AGE_RECIPIENTS** (explicit Bech32, wins if set).
+#. ``--age-key-name`` / **SOPS_AGE_KEY_NAME** — looks up that name in the PXF
+   file and uses its derived public key:
+
+   .. code:: sh
+
+       $ sops encrypt --age-key-name staging test.yaml > test.enc.yaml
+
+#. The PXF file's ``default`` entry, if any. When neither ``--age`` nor
+   ``--age-key-name`` is given, this is what gets used as the recipient — so
+   in the file above, ``sops encrypt test.yaml`` would encrypt with
+   ``production``.
+#. ``.sops.yaml`` ``creation_rules`` (see below).
+
+A line-based ``keys.txt`` (no ``.pxf`` extension) continues to parse exactly
+as before. The PXF path is opt-in via the file extension.
+
+**For Go consumers:** the same schema is exposed as the public package
+``github.com/getsops/sops/v3/age/keypb``. ``keypb.ReadFile`` returns an
+``*AgeKeyFile``; ``RecipientForName`` / ``NameForRecipient`` /
+``Recipients`` let you go from a name to a recipient or vice-versa without
+depending on the rest of the age driver.
 
 A list of age recipients can be added to the ``.sops.yaml``:
 
