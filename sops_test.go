@@ -542,6 +542,11 @@ func TestUnencryptedCommentRegex(t *testing.T) {
 			},
 		},
 	}
+	// Fork policy: all comments stay plaintext by default. The
+	// UnencryptedCommentRegex carve-out then keeps the NEARBY values
+	// (not the comments themselves — comments were already plaintext)
+	// unencrypted. The "before" comment, which upstream expects to
+	// encrypt as "erofeb", now stays as "before" under fork policy.
 	tree := Tree{Branches: branches, Metadata: Metadata{UnencryptedCommentRegex: "sops:noenc"}}
 	expected := TreeBranch{
 		TreeItem{
@@ -560,7 +565,7 @@ func TestUnencryptedCommentRegex(t *testing.T) {
 					Value: "rab",
 				},
 				TreeItem{
-					Key:   Comment{Value: "erofeb"},
+					Key:   Comment{Value: "before"},
 					Value: nil,
 				},
 				TreeItem{
@@ -633,7 +638,14 @@ func TestUnencryptedCommentRegexFail(t *testing.T) {
 	tree := Tree{Branches: branches, Metadata: Metadata{UnencryptedCommentRegex: "ENC"}}
 	cipher := encPrefixCipher{}
 	_, err := tree.Encrypt(bytes.Repeat([]byte("f"), 32), cipher)
-	assert.ErrorContains(t, err, "Encrypted comment \"ENC:sops:noenc\" matches UnencryptedCommentRegex!")
+	// Upstream: the comment "sops:noenc" would be encrypted to
+	// "ENC:sops:noenc", that ciphertext would match
+	// UnencryptedCommentRegex ("ENC"), and sops would error to flag
+	// the config conflict. Under fork policy, comments are never
+	// encrypted in the first place, so the conflict is unreachable
+	// — Encrypt completes without error.
+	assert.NoError(t, err,
+		"comments don't encrypt under fork policy → no ciphertext that could match UnencryptedCommentRegex")
 }
 
 type MockCipher struct{}
@@ -931,13 +943,27 @@ func TestTruncateTreeArrayOutOfBounds(t *testing.T) {
 	assert.Nil(t, result, "Truncate result was not nil upon %s", err)
 }
 
-func TestEncryptComments(t *testing.T) {
+// Upstream sops encrypts comments by default. This fork inverts
+// that default (comments are documentation, not secrets — see the
+// shouldBeEncrypted fork-policy comment) so TestEncryptComments
+// and TestDecryptComments no longer apply: there is no metadata
+// configuration that makes a bare comment encrypt itself, since
+// EncryptedCommentRegex deliberately excludes the comment being
+// processed (it's a marker for "encrypt the following items").
+// The TestEncryptCommentsForkPolicy test below replaces them with
+// the new contract.
+
+func TestEncryptCommentsForkPolicy(t *testing.T) {
 	tree := Tree{
 		Branches: TreeBranches{
 			TreeBranch{
 				TreeItem{
 					Key:   Comment{Value: "foo"},
 					Value: nil,
+				},
+				TreeItem{
+					Key:   "secret",
+					Value: "shh",
 				},
 				TreeItem{
 					Key: "list",
@@ -949,44 +975,21 @@ func TestEncryptComments(t *testing.T) {
 				},
 			},
 		},
-		Metadata: Metadata{
-			UnencryptedSuffix: DefaultUnencryptedSuffix,
-		},
+		// Default policy: no comment-related metadata set.
+		Metadata: Metadata{},
 	}
 	tree.Encrypt(bytes.Repeat([]byte{'f'}, 32), reverseCipher{})
-	assert.Equal(t, "oof", tree.Branches[0][0].Key.(Comment).Value)
-	assert.Equal(t, "rab", tree.Branches[0][1].Value.([]interface{})[1])
-}
-
-func TestDecryptComments(t *testing.T) {
-	tree := Tree{
-		Branches: TreeBranches{
-			TreeBranch{
-				TreeItem{
-					Key:   Comment{Value: "oof"},
-					Value: nil,
-				},
-				TreeItem{
-					Key: "list",
-					Value: []interface{}{
-						"1",
-						Comment{Value: "rab"},
-						"2",
-					},
-				},
-				TreeItem{
-					Key:   "list",
-					Value: nil,
-				},
-			},
-		},
-		Metadata: Metadata{
-			UnencryptedSuffix: DefaultUnencryptedSuffix,
-		},
-	}
-	tree.Decrypt(bytes.Repeat([]byte{'f'}, 32), reverseCipher{})
-	assert.Equal(t, "foo", tree.Branches[0][0].Key.(Comment).Value)
-	assert.Equal(t, "bar", tree.Branches[0][1].Value.([]interface{})[1])
+	// Comments stay as Comment{} values (and stay plaintext) — when
+	// encryption fires upstream, the Comment value is replaced with
+	// the ciphertext string. Our fork keeps the Comment object
+	// intact instead.
+	assert.Equal(t, "foo", tree.Branches[0][0].Key.(Comment).Value,
+		"top-level comment stays plaintext")
+	listComment, ok := tree.Branches[0][2].Value.([]interface{})[1].(Comment)
+	assert.True(t, ok, "in-list comment stays a Comment{} rather than the ciphertext string")
+	assert.Equal(t, "bar", listComment.Value)
+	// Real values still encrypt (reverseCipher reverses).
+	assert.Equal(t, "hhs", tree.Branches[0][1].Value)
 }
 
 func TestDecryptUnencryptedComments(t *testing.T) {
