@@ -1,0 +1,5 @@
+# mdl 0.16.0 enabled MD013 (line-length, default 80) by default; the
+# upstream-inherited CHANGELOG.md has long PR-link lines that would
+# require rewriting history to wrap. Disable MD013 globally rather
+# than mangle changelog entries.
+rules "~MD013"

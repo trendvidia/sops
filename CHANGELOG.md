@@ -1,5 +1,41 @@
 # Changelog
 
+## 3.15.0
+
+Extends PXF age-key support from `SOPS_AGE_KEY_FILE` to the two other
+key-material env vars. Backwards-compatible: anything that has always
+been line-based sees no behavior change because the dispatch is driven
+by content sniffing — the probe only takes the PXF path when the bytes
+positively look like a PXF top-level entry.
+
+New features:
+
+* **PXF content in `SOPS_AGE_KEY` and `SOPS_AGE_KEY_CMD`.** Until now,
+  PXF dispatch keyed off the `SOPS_AGE_KEY_FILE` path's `.pxf`
+  extension; the env-value and command-output paths always took the
+  legacy line-based parser. That blocked the v3.14.0 multi-key
+  workflow whenever the key material had to be supplied as a value
+  (env var) or fetched at runtime (e.g. a Bitwarden CLI lookup)
+  rather than written to disk. A new `isPXFContent` probe skims the
+  first non-blank, non-comment line and dispatches to the PXF parser
+  when it positively matches a PXF top-level entry (`identifier = …`
+  or `identifier { … }`). Legacy `AGE-…` lines, armored `-----BEGIN
+  AGE` blobs, and random junk fall through to the existing parser,
+  preserving today's error paths. PR #28.
+
+* **Encrypt-side default and named lookups now walk an ordered chain
+  of PXF sources.** `DefaultRecipientFromKeyFile` and
+  `RecipientFromKeyFileByName` consult `SOPS_AGE_KEY_FILE` >
+  `SOPS_AGE_KEY` > `SOPS_AGE_KEY_CMD` and return the first hit.
+  `SOPS_AGE_KEY_CMD` is invoked lazily so it only runs when earlier
+  sources don't resolve. Function names are retained for backwards
+  compatibility; only behavior is broadened. PR #28.
+
+* **`keypb.Parse(source, data)` exposed.** Bytes-based PXF decoder
+  callable on env values, command stdout, or any other in-memory
+  source without writing to disk first. `keypb.ReadFile` now
+  delegates to it. PR #28.
+
 ## 3.14.0
 
 Adds first-class support for age key files holding multiple named
