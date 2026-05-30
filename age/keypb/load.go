@@ -27,9 +27,17 @@ func ReadFile(path string) (*AgeKeyFile, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read age key file: %w", err)
 	}
+	return Parse(path, data)
+}
+
+// Parse decodes data as a PXF-encoded AgeKeyFile. source is used only
+// for error messages (e.g. a file path or env var name). Use this when
+// the bytes come from somewhere other than a file on disk — for
+// example, the value of SOPS_AGE_KEY or the stdout of SOPS_AGE_KEY_CMD.
+func Parse(source string, data []byte) (*AgeKeyFile, error) {
 	var f AgeKeyFile
 	if err := pxf.Unmarshal(data, &f); err != nil {
-		return nil, fmt.Errorf("parse age key file %q: %w", path, err)
+		return nil, fmt.Errorf("parse age key file %q: %w", source, err)
 	}
 	return &f, nil
 }

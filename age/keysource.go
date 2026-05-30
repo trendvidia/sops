@@ -447,9 +447,22 @@ func (key *MasterKey) loadIdentities() (ParsedIdentities, []string, errSet) {
 	var readers = make(map[string]identityReader, 0)
 
 	if ageKey, ok := os.LookupEnv(SopsAgeKeyEnv); ok {
-		readers[SopsAgeKeyEnv] = identityReader{
-			reader:                   strings.NewReader(ageKey),
-			allowMultipleKeysPerLine: true,
+		data := []byte(ageKey)
+		if isPXFContent(data) {
+			ids, err := parsePXFIdentities(SopsAgeKeyEnv, data)
+			if err != nil {
+				errs = append(errs, err)
+			} else {
+				identities = append(identities, ids...)
+				if len(ids) == 0 {
+					unusedLocations = append(unusedLocations, SopsAgeKeyEnv)
+				}
+			}
+		} else {
+			readers[SopsAgeKeyEnv] = identityReader{
+				reader:                   bytes.NewReader(data),
+				allowMultipleKeysPerLine: true,
+			}
 		}
 	} else {
 		unusedLocations = append(unusedLocations, SopsAgeKeyEnv)
@@ -486,6 +499,16 @@ func (key *MasterKey) loadIdentities() (ParsedIdentities, []string, errSet) {
 		out, err := getOutputFromCmd(ageKeyCmd, []string{fmt.Sprintf("%s=%s", SopsAgeRecipientEnv, key.Recipient)})
 		if err != nil {
 			errs = append(errs, err)
+		} else if isPXFContent(out) {
+			ids, err := parsePXFIdentities(SopsAgeKeyCmdEnv, out)
+			if err != nil {
+				errs = append(errs, err)
+			} else {
+				identities = append(identities, ids...)
+				if len(ids) == 0 {
+					unusedLocations = append(unusedLocations, SopsAgeKeyCmdEnv)
+				}
+			}
 		} else {
 			readers[SopsAgeKeyCmdEnv] = identityReader{
 				reader:                   bytes.NewReader(out),
@@ -617,12 +640,66 @@ func parseIdentity(s string) (age.Identity, error) {
 	}
 }
 
-// loadPXFIdentities reads a PXF-formatted age key file and parses every
-// entry in its `keys` map as an age identity. The file's `default`
-// field is ignored here — defaults are an encrypt-side concept,
-// surfaced via DefaultRecipientFromKeyFile.
-func loadPXFIdentities(path string) (ParsedIdentities, error) {
-	f, err := keypb.ReadFile(path)
+// isPXFContent reports whether data looks like PXF-encoded age key
+// material rather than the legacy line-based format or an age-encrypted
+// identity blob.
+//
+// The probe skips blank lines and `#` comments (both formats accept
+// them), then requires the first content line to positively match a
+// PXF top-level entry shape: `identifier = …` or `identifier { … }`
+// (per protowire-go's grammar — map-style `:` is reserved for nested
+// entries and is rejected at the top level). Everything else —
+// including legacy `AGE-…` lines, armored `-----BEGIN AGE` blobs, and
+// random junk — falls through to the legacy parser, which surfaces the
+// real error.
+func isPXFContent(data []byte) bool {
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		return looksLikePXFTopLevelEntry(line)
+	}
+	return false
+}
+
+// looksLikePXFTopLevelEntry reports whether line starts with an
+// identifier followed by `=` or `{` (after optional whitespace) — the
+// only two shapes PXF accepts at the top level of a document.
+func looksLikePXFTopLevelEntry(line string) bool {
+	if line == "" {
+		return false
+	}
+	c := line[0]
+	if !(c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+		return false
+	}
+	i := 1
+	for i < len(line) {
+		c := line[i]
+		if c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
+			i++
+			continue
+		}
+		break
+	}
+	for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
+		i++
+	}
+	if i >= len(line) {
+		return false
+	}
+	return line[i] == '=' || line[i] == '{'
+}
+
+// parsePXFIdentities parses data as a PXF-encoded AgeKeyFile and
+// returns every entry in its `keys` map as an age identity. source is
+// used only for error messages. The file's `default` field is ignored
+// here — defaults are an encrypt-side concept, surfaced via
+// DefaultRecipientFromKeyFile.
+func parsePXFIdentities(source string, data []byte) (ParsedIdentities, error) {
+	f, err := keypb.Parse(source, data)
 	if err != nil {
 		return nil, err
 	}
@@ -630,64 +707,141 @@ func loadPXFIdentities(path string) (ParsedIdentities, error) {
 	for name, secret := range f.Keys {
 		id, err := parseIdentity(secret)
 		if err != nil {
-			return nil, fmt.Errorf("age key file %q: parsing key %q: %w", path, name, err)
+			return nil, fmt.Errorf("age key file %q: parsing key %q: %w", source, name, err)
 		}
 		ids = append(ids, id)
 	}
 	return ids, nil
 }
 
-// DefaultRecipientFromKeyFile returns the Bech32-encoded age public
-// key of the "default" entry in SOPS_AGE_KEY_FILE, when that env var
-// points to a PXF-formatted key file (extension `.pxf`) with a default
-// set.
-//
-// Returns "" with a nil error in three benign cases:
-//   - SOPS_AGE_KEY_FILE is unset;
-//   - the file's extension is not `.pxf` (legacy line-based format);
-//   - the file is PXF but has no `default` field.
-//
-// Returns an error if the file is PXF-extension but malformed, if the
-// named default key is missing from the `keys` map, or if the default
-// key's secret cannot be derived into a recipient (i.e. it is a plugin
-// identity — plugin recipient derivation requires the plugin's IPC
-// protocol, which is out of scope here).
-func DefaultRecipientFromKeyFile() (string, error) {
-	path, ok := os.LookupEnv(SopsAgeKeyFileEnv)
-	if !ok || !strings.HasSuffix(path, keypb.FileExtension) {
-		return "", nil
-	}
-	f, err := keypb.ReadFile(path)
+// loadPXFIdentities reads a PXF-formatted age key file and parses every
+// entry in its `keys` map as an age identity.
+func loadPXFIdentities(path string) (ParsedIdentities, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", err
+		return nil, fmt.Errorf("read age key file: %w", err)
 	}
-	if f.Default == "" {
-		return "", nil
-	}
-	return recipientFromAgeKeyFile(path, f, f.Default, "default")
+	return parsePXFIdentities(path, data)
 }
 
-// RecipientFromKeyFileByName resolves `name` against SOPS_AGE_KEY_FILE
-// (which must be PXF-formatted, ending in .pxf) and returns the
-// Bech32-encoded age public key of that entry. Backs the
+// pxfSourceFn lazily yields a parsed PXF AgeKeyFile from one of the
+// SopsAgeKey* env vars, along with a human-readable label for error
+// messages. It returns (nil, nil) if the env var is unset or its
+// content is not PXF (so the caller falls through to the next source).
+type pxfSourceFn func() (string, *keypb.AgeKeyFile, error)
+
+// pxfSources returns the encrypt-side PXF sources in precedence order:
+// SOPS_AGE_KEY_FILE > SOPS_AGE_KEY > SOPS_AGE_KEY_CMD. Each source is
+// lazy so SOPS_AGE_KEY_CMD only runs when no earlier source resolves.
+//
+// SOPS_AGE_KEY_FILE is dispatched on its extension (`.pxf`); the env
+// and cmd sources are dispatched by content sniffing via isPXFContent.
+func pxfSources() []pxfSourceFn {
+	return []pxfSourceFn{
+		func() (string, *keypb.AgeKeyFile, error) {
+			path, ok := os.LookupEnv(SopsAgeKeyFileEnv)
+			if !ok || !strings.HasSuffix(path, keypb.FileExtension) {
+				return "", nil, nil
+			}
+			f, err := keypb.ReadFile(path)
+			return path, f, err
+		},
+		func() (string, *keypb.AgeKeyFile, error) {
+			ageKey, ok := os.LookupEnv(SopsAgeKeyEnv)
+			if !ok {
+				return "", nil, nil
+			}
+			data := []byte(ageKey)
+			if !isPXFContent(data) {
+				return "", nil, nil
+			}
+			f, err := keypb.Parse(SopsAgeKeyEnv, data)
+			return SopsAgeKeyEnv, f, err
+		},
+		func() (string, *keypb.AgeKeyFile, error) {
+			ageKeyCmd, ok := os.LookupEnv(SopsAgeKeyCmdEnv)
+			if !ok {
+				return "", nil, nil
+			}
+			// SOPS_AGE_RECIPIENT is unknown at this point — we're
+			// computing the recipient. Pass empty so the command can
+			// distinguish "produce all keys" from a specific lookup.
+			out, err := getOutputFromCmd(ageKeyCmd, []string{fmt.Sprintf("%s=", SopsAgeRecipientEnv)})
+			if err != nil {
+				return SopsAgeKeyCmdEnv, nil, err
+			}
+			if !isPXFContent(out) {
+				return "", nil, nil
+			}
+			f, err := keypb.Parse(SopsAgeKeyCmdEnv, out)
+			return SopsAgeKeyCmdEnv, f, err
+		},
+	}
+}
+
+// DefaultRecipientFromKeyFile returns the Bech32-encoded age public
+// key of the "default" entry from the first PXF-formatted age key
+// source that has one set. Sources are consulted in this order:
+//
+//  1. SOPS_AGE_KEY_FILE — when the path ends in `.pxf`.
+//  2. SOPS_AGE_KEY     — when its value is PXF content.
+//  3. SOPS_AGE_KEY_CMD — when its stdout is PXF content.
+//
+// Returns "" with a nil error when no source supplies a default. The
+// function name is retained for backwards compatibility; the resolved
+// source may be the env or cmd.
+//
+// Returns an error if a PXF source is malformed, if the default name
+// isn't present in its `keys` map, or if the default key's secret
+// cannot be derived into a recipient (i.e. it is a plugin identity).
+func DefaultRecipientFromKeyFile() (string, error) {
+	for _, source := range pxfSources() {
+		label, f, err := source()
+		if err != nil {
+			return "", err
+		}
+		if f == nil || f.Default == "" {
+			continue
+		}
+		return recipientFromAgeKeyFile(label, f, f.Default, "default")
+	}
+	return "", nil
+}
+
+// RecipientFromKeyFileByName resolves `name` against the first
+// PXF-formatted age key source that contains it and returns the
+// Bech32-encoded age public key of that entry. Sources are consulted
+// in the same order as DefaultRecipientFromKeyFile. Backs the
 // --age-key-name / SOPS_AGE_KEY_NAME CLI surface.
 //
-// Errors unconditionally if SOPS_AGE_KEY_FILE is unset, the path
-// doesn't end in .pxf, the file is malformed, the named entry isn't
-// present, or its secret can't be derived (plugin identity).
+// Errors if no PXF source is configured, if all configured sources
+// lack the named entry, or if the entry's secret can't be derived
+// (plugin identity).
 func RecipientFromKeyFileByName(name string) (string, error) {
-	path, ok := os.LookupEnv(SopsAgeKeyFileEnv)
-	if !ok {
-		return "", fmt.Errorf("--age-key-name requires %s to be set", SopsAgeKeyFileEnv)
+	var (
+		anyPXFSource bool
+		lastLabel    string
+	)
+	for _, source := range pxfSources() {
+		label, f, err := source()
+		if err != nil {
+			return "", err
+		}
+		if f == nil {
+			continue
+		}
+		anyPXFSource = true
+		lastLabel = label
+		if _, ok := f.Keys[name]; !ok {
+			continue
+		}
+		return recipientFromAgeKeyFile(label, f, name, "key")
 	}
-	if !strings.HasSuffix(path, keypb.FileExtension) {
-		return "", fmt.Errorf("--age-key-name requires %s to end in %s (got %q)", SopsAgeKeyFileEnv, keypb.FileExtension, path)
+	if !anyPXFSource {
+		return "", fmt.Errorf("--age-key-name requires a PXF-formatted age key source (%s, %s, or %s)",
+			SopsAgeKeyFileEnv, SopsAgeKeyEnv, SopsAgeKeyCmdEnv)
 	}
-	f, err := keypb.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-	return recipientFromAgeKeyFile(path, f, name, "key")
+	return "", fmt.Errorf("age key file %q: key %q not in keys", lastLabel, name)
 }
 
 // recipientFromAgeKeyFile is the shared body of
