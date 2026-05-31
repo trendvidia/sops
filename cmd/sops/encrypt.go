@@ -6,12 +6,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/getsops/sops/v3"
-	"github.com/getsops/sops/v3/cmd/sops/codes"
-	"github.com/getsops/sops/v3/cmd/sops/common"
-	"github.com/getsops/sops/v3/keyservice"
-	"github.com/getsops/sops/v3/stores"
-	"github.com/getsops/sops/v3/version"
+	"github.com/trendvidia/sops/v3"
+	"github.com/trendvidia/sops/v3/cmd/sops/codes"
+	"github.com/trendvidia/sops/v3/cmd/sops/common"
+	"github.com/trendvidia/sops/v3/keyservice"
+	"github.com/trendvidia/sops/v3/stores"
+	"github.com/trendvidia/sops/v3/version"
 	"github.com/mitchellh/go-wordwrap"
 )
 

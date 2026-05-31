@@ -2,14 +2,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-PROJECT             := github.com/getsops/sops/v3
+PROJECT             := github.com/trendvidia/sops/v3
 PROJECT_DIR         := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
 BIN_DIR             := $(PROJECT_DIR)/bin
 
 GO                  := GOPROXY=https://proxy.golang.org go
 GO_TEST_FLAGS       ?= -race -coverprofile=profile.out -covermode=atomic
 
-GITHUB_REPOSITORY   ?= github.com/getsops/sops
+GITHUB_REPOSITORY   ?= github.com/trendvidia/sops
 
 STATICCHECK         := $(BIN_DIR)/staticcheck
 STATICCHECK_VERSION := latest
@@ -36,7 +36,7 @@ origin-build: test vet generate install functional-tests-all
 
 .PHONY: install
 install:
-	$(GO) install github.com/getsops/sops/v3/cmd/sops
+	$(GO) install github.com/trendvidia/sops/v3/cmd/sops
 
 .PHONY: staticcheck
 staticcheck: install-staticcheck
@@ -83,12 +83,12 @@ generate: install-buf
 
 .PHONY: functional-tests
 functional-tests:
-	$(GO) build -o functional-tests/sops github.com/getsops/sops/v3/cmd/sops
+	$(GO) build -o functional-tests/sops github.com/trendvidia/sops/v3/cmd/sops
 	cd functional-tests && cargo test
 
 .PHONY: functional-tests-all
 functional-tests-all:
-	$(GO) build -o functional-tests/sops github.com/getsops/sops/v3/cmd/sops
+	$(GO) build -o functional-tests/sops github.com/trendvidia/sops/v3/cmd/sops
 	# Ignored tests are ones that require external services (e.g. AWS KMS)
 	# 	TODO: Once `--include-ignored` lands in rust stable, switch to that.
 	cd functional-tests && cargo test && cargo test -- --ignored

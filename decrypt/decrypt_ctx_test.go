@@ -9,13 +9,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/getsops/sops/v3"
-	"github.com/getsops/sops/v3/age"
-	"github.com/getsops/sops/v3/cmd/sops/formats"
-	"github.com/getsops/sops/v3/encrypt"
-	jsonstore "github.com/getsops/sops/v3/stores/json"
-	pxfstore "github.com/getsops/sops/v3/stores/protowire"
-	yamlstore "github.com/getsops/sops/v3/stores/yaml"
+	"github.com/trendvidia/sops/v3"
+	"github.com/trendvidia/sops/v3/age"
+	"github.com/trendvidia/sops/v3/cmd/sops/formats"
+	"github.com/trendvidia/sops/v3/encrypt"
+	jsonstore "github.com/trendvidia/sops/v3/stores/json"
+	pxfstore "github.com/trendvidia/sops/v3/stores/protowire"
+	yamlstore "github.com/trendvidia/sops/v3/stores/yaml"
 )
 
 func TestDataWithContext_PreCancelled(t *testing.T) {

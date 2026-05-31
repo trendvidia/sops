@@ -1,7 +1,7 @@
 /*
 Package config provides a way to find and load SOPS configuration files
 */
-package config //import "github.com/getsops/sops/v3/config"
+package config //import "github.com/trendvidia/sops/v3/config"
 
 import (
 	"fmt"
@@ -11,15 +11,15 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/getsops/sops/v3"
-	"github.com/getsops/sops/v3/age"
-	"github.com/getsops/sops/v3/azkv"
-	"github.com/getsops/sops/v3/gcpkms"
-	"github.com/getsops/sops/v3/hckms"
-	"github.com/getsops/sops/v3/hcvault"
-	"github.com/getsops/sops/v3/kms"
-	"github.com/getsops/sops/v3/pgp"
-	"github.com/getsops/sops/v3/publish"
+	"github.com/trendvidia/sops/v3"
+	"github.com/trendvidia/sops/v3/age"
+	"github.com/trendvidia/sops/v3/azkv"
+	"github.com/trendvidia/sops/v3/gcpkms"
+	"github.com/trendvidia/sops/v3/hckms"
+	"github.com/trendvidia/sops/v3/hcvault"
+	"github.com/trendvidia/sops/v3/kms"
+	"github.com/trendvidia/sops/v3/pgp"
+	"github.com/trendvidia/sops/v3/publish"
 	"go.yaml.in/yaml/v3"
 )
 

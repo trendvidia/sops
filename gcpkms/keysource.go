@@ -1,4 +1,4 @@
-package gcpkms // import "github.com/getsops/sops/v3/gcpkms"
+package gcpkms // import "github.com/trendvidia/sops/v3/gcpkms"
 
 import (
 	"context"
@@ -16,7 +16,7 @@ import (
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
 
-	"github.com/getsops/sops/v3/logging"
+	"github.com/trendvidia/sops/v3/logging"
 )
 
 const (

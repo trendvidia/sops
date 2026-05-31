@@ -3,8 +3,8 @@ package yaml
 import (
 	"testing"
 
-	"github.com/getsops/sops/v3"
-	"github.com/getsops/sops/v3/config"
+	"github.com/trendvidia/sops/v3"
+	"github.com/trendvidia/sops/v3/config"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -20,7 +20,7 @@ import (
 	"github.com/mitchellh/go-homedir"
 	"github.com/sirupsen/logrus"
 
-	"github.com/getsops/sops/v3/logging"
+	"github.com/trendvidia/sops/v3/logging"
 )
 
 const (

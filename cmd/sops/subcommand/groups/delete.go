@@ -5,9 +5,9 @@ import (
 
 	"fmt"
 
-	"github.com/getsops/sops/v3"
-	"github.com/getsops/sops/v3/cmd/sops/common"
-	"github.com/getsops/sops/v3/keyservice"
+	"github.com/trendvidia/sops/v3"
+	"github.com/trendvidia/sops/v3/cmd/sops/common"
+	"github.com/trendvidia/sops/v3/keyservice"
 )
 
 // DeleteOpts are the options for deleting a key group from a SOPS file

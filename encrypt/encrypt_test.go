@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/getsops/sops/v3"
-	"github.com/getsops/sops/v3/age"
-	"github.com/getsops/sops/v3/decrypt"
-	"github.com/getsops/sops/v3/encrypt"
+	"github.com/trendvidia/sops/v3"
+	"github.com/trendvidia/sops/v3/age"
+	"github.com/trendvidia/sops/v3/decrypt"
+	"github.com/trendvidia/sops/v3/encrypt"
 )
 
 const (

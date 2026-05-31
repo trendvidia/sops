@@ -109,7 +109,7 @@ func RetrieveLatestVersionFromUpstream() (string, error) {
 //
 // Unlike RetrieveLatestVersionFromUpstream, it returns the tag (e.g. "v3.7.3").
 func RetrieveLatestReleaseVersion() (tag, url string, err error) {
-	const repository = "getsops/sops"
+	const repository = "trendvidia/sops"
 	return newReleaseFetcher().LatestRelease(repository)
 }
 
