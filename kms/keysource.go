@@ -1,9 +1,9 @@
 /*
-Package kms contains an implementation of the github.com/getsops/sops/v3.MasterKey
+Package kms contains an implementation of the github.com/trendvidia/sops/v3.MasterKey
 interface that encrypts and decrypts the data key using AWS KMS with the SDK
 for Go V2.
 */
-package kms // import "github.com/getsops/sops/v3/kms"
+package kms // import "github.com/trendvidia/sops/v3/kms"
 
 import (
 	"context"
@@ -23,7 +23,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/sirupsen/logrus"
 
-	"github.com/getsops/sops/v3/logging"
+	"github.com/trendvidia/sops/v3/logging"
 )
 
 const (

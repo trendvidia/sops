@@ -4,8 +4,8 @@ import (
 	"path"
 	"testing"
 
-	"github.com/getsops/sops/v3/cmd/sops/common"
-	"github.com/getsops/sops/v3/config"
+	"github.com/trendvidia/sops/v3/cmd/sops/common"
+	"github.com/trendvidia/sops/v3/config"
 	"github.com/stretchr/testify/require"
 )
 

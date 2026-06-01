@@ -4,11 +4,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/getsops/sops/v3"
-	"github.com/getsops/sops/v3/cmd/sops/codes"
-	"github.com/getsops/sops/v3/cmd/sops/common"
-	"github.com/getsops/sops/v3/keyservice"
-	"github.com/getsops/sops/v3/stores/json"
+	"github.com/trendvidia/sops/v3"
+	"github.com/trendvidia/sops/v3/cmd/sops/codes"
+	"github.com/trendvidia/sops/v3/cmd/sops/common"
+	"github.com/trendvidia/sops/v3/keyservice"
+	"github.com/trendvidia/sops/v3/stores/json"
 )
 
 const notBinaryHint = ("This is likely not an encrypted binary file?" +

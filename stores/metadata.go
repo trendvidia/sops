@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 
-	"github.com/getsops/sops/v3"
+	"github.com/trendvidia/sops/v3"
 )
 
 // MetadataFlatten is an enum type

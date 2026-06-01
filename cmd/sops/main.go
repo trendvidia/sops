@@ -1,4 +1,4 @@
-package main // import "github.com/getsops/sops/v3/cmd/sops"
+package main // import "github.com/trendvidia/sops/v3/cmd/sops"
 
 import (
 	"context"
@@ -19,32 +19,32 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/getsops/sops/v3"
-	"github.com/getsops/sops/v3/aes"
-	"github.com/getsops/sops/v3/age"
-	_ "github.com/getsops/sops/v3/audit"
-	"github.com/getsops/sops/v3/azkv"
-	"github.com/getsops/sops/v3/cmd/sops/codes"
-	"github.com/getsops/sops/v3/cmd/sops/common"
-	"github.com/getsops/sops/v3/cmd/sops/subcommand/exec"
-	filestatuscmd "github.com/getsops/sops/v3/cmd/sops/subcommand/filestatus"
-	"github.com/getsops/sops/v3/cmd/sops/subcommand/groups"
-	keyservicecmd "github.com/getsops/sops/v3/cmd/sops/subcommand/keyservice"
-	publishcmd "github.com/getsops/sops/v3/cmd/sops/subcommand/publish"
-	"github.com/getsops/sops/v3/cmd/sops/subcommand/updatekeys"
-	"github.com/getsops/sops/v3/config"
-	"github.com/getsops/sops/v3/gcpkms"
-	"github.com/getsops/sops/v3/hckms"
-	"github.com/getsops/sops/v3/hcvault"
-	"github.com/getsops/sops/v3/keys"
-	"github.com/getsops/sops/v3/keyservice"
-	"github.com/getsops/sops/v3/kms"
-	"github.com/getsops/sops/v3/logging"
-	"github.com/getsops/sops/v3/pgp"
-	"github.com/getsops/sops/v3/stores"
-	"github.com/getsops/sops/v3/stores/dotenv"
-	"github.com/getsops/sops/v3/stores/json"
-	"github.com/getsops/sops/v3/version"
+	"github.com/trendvidia/sops/v3"
+	"github.com/trendvidia/sops/v3/aes"
+	"github.com/trendvidia/sops/v3/age"
+	_ "github.com/trendvidia/sops/v3/audit"
+	"github.com/trendvidia/sops/v3/azkv"
+	"github.com/trendvidia/sops/v3/cmd/sops/codes"
+	"github.com/trendvidia/sops/v3/cmd/sops/common"
+	"github.com/trendvidia/sops/v3/cmd/sops/subcommand/exec"
+	filestatuscmd "github.com/trendvidia/sops/v3/cmd/sops/subcommand/filestatus"
+	"github.com/trendvidia/sops/v3/cmd/sops/subcommand/groups"
+	keyservicecmd "github.com/trendvidia/sops/v3/cmd/sops/subcommand/keyservice"
+	publishcmd "github.com/trendvidia/sops/v3/cmd/sops/subcommand/publish"
+	"github.com/trendvidia/sops/v3/cmd/sops/subcommand/updatekeys"
+	"github.com/trendvidia/sops/v3/config"
+	"github.com/trendvidia/sops/v3/gcpkms"
+	"github.com/trendvidia/sops/v3/hckms"
+	"github.com/trendvidia/sops/v3/hcvault"
+	"github.com/trendvidia/sops/v3/keys"
+	"github.com/trendvidia/sops/v3/keyservice"
+	"github.com/trendvidia/sops/v3/kms"
+	"github.com/trendvidia/sops/v3/logging"
+	"github.com/trendvidia/sops/v3/pgp"
+	"github.com/trendvidia/sops/v3/stores"
+	"github.com/trendvidia/sops/v3/stores/dotenv"
+	"github.com/trendvidia/sops/v3/stores/json"
+	"github.com/trendvidia/sops/v3/version"
 )
 
 var (
@@ -158,7 +158,7 @@ func main() {
    Note that flags must always be provided before the filename to operate on.
    Otherwise, they will be ignored.
 
-   For more information, see the README at https://github.com/getsops/sops`
+   For more information, see the README at https://github.com/trendvidia/sops`
 	app.EnableBashCompletion = true
 	app.Commands = []cli.Command{
 		{

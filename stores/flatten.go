@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/getsops/sops/v3"
+	"github.com/trendvidia/sops/v3"
 )
 
 const mapSeparator = "__map_"

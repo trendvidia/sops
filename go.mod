@@ -1,4 +1,4 @@
-module github.com/getsops/sops/v3
+module github.com/trendvidia/sops/v3
 
 go 1.25.0
 

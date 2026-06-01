@@ -10,7 +10,7 @@ before:
 # xref: https://goreleaser.com/customization/env/
 env:
   - CGO_ENABLED=0
-  - PKG=github.com/getsops/sops/v3/version
+  - PKG=github.com/trendvidia/sops/v3/version
   - COSIGN_YES=true
 
 # xref: https://goreleaser.com/customization/reportsizes/

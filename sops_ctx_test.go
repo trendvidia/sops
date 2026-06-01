@@ -8,7 +8,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/getsops/sops/v3/keyservice"
+	"github.com/trendvidia/sops/v3/keyservice"
 )
 
 // TestGetDataKeyCtx_PreCancelled — a cancelled ctx returns fast without

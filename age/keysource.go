@@ -20,8 +20,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 
-	"github.com/getsops/sops/v3/age/keypb"
-	"github.com/getsops/sops/v3/logging"
+	"github.com/trendvidia/sops/v3/age/keypb"
+	"github.com/trendvidia/sops/v3/logging"
 	"github.com/google/shlex"
 )
 

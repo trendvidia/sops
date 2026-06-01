@@ -68,7 +68,7 @@ New features:
     1. `.sops.yaml` config file
   PR #25.
 
-* **`github.com/getsops/sops/v3/age/keypb` public package.** Consumers
+* **`github.com/trendvidia/sops/v3/age/keypb` public package.** Consumers
   (e.g. the pxfed editor) can import this package to read `.pxf` key
   files and look up name↔recipient mappings without depending on the
   age driver: `ReadFile`, `(*AgeKeyFile).Recipients`,
@@ -962,7 +962,7 @@ Project changes:
 * Remove remaining CircleCI workflow ([#1237](https://github.com/getsops/sops/pull/1237))
 * Run CLI workflow on main ([#1243](https://github.com/getsops/sops/pull/1243))
 * Delete obsolete `validation/` artifact ([#1248](https://github.com/getsops/sops/pull/1248))
-* Rename Go module to `github.com/getsops/sops/v3` ([#1247](https://github.com/getsops/sops/pull/1247))
+* Rename Go module to `github.com/trendvidia/sops/v3` ([#1247](https://github.com/getsops/sops/pull/1247))
 * Revamp release automation, including (Cosign) signed container images
   and checksums file, SLSA3 provenance and SBOMs ([#1250](https://github.com/getsops/sops/pull/1250))
 * Update various bits of documentation ([#1244](https://github.com/getsops/sops/pull/1244))

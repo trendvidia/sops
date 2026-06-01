@@ -1,9 +1,9 @@
 /*
-Package hckms contains an implementation of the github.com/getsops/sops/v3/keys.MasterKey
+Package hckms contains an implementation of the github.com/trendvidia/sops/v3/keys.MasterKey
 interface that encrypts and decrypts the data key using HuaweiCloud KMS with the SDK
 for Go V3.
 */
-package hckms // import "github.com/getsops/sops/v3/hckms"
+package hckms // import "github.com/trendvidia/sops/v3/hckms"
 
 import (
 	"context"
@@ -20,7 +20,7 @@ import (
 	kmsregion "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/kms/v2/region"
 	"github.com/sirupsen/logrus"
 
-	"github.com/getsops/sops/v3/logging"
+	"github.com/trendvidia/sops/v3/logging"
 )
 
 const (

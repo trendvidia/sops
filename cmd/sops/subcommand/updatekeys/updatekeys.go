@@ -6,10 +6,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/getsops/sops/v3/cmd/sops/codes"
-	"github.com/getsops/sops/v3/cmd/sops/common"
-	"github.com/getsops/sops/v3/config"
-	"github.com/getsops/sops/v3/keyservice"
+	"github.com/trendvidia/sops/v3/cmd/sops/codes"
+	"github.com/trendvidia/sops/v3/cmd/sops/common"
+	"github.com/trendvidia/sops/v3/config"
+	"github.com/trendvidia/sops/v3/keyservice"
 )
 
 // Opts represents key operation options and config

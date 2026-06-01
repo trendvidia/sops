@@ -10,15 +10,15 @@ HuaweiCloud KMS, age, and PGP.
 
 ------------
 
-.. image:: https://pkg.go.dev/badge/github.com/getsops/sops/v3.svg
-    :target: https://pkg.go.dev/github.com/getsops/sops/v3
+.. image:: https://pkg.go.dev/badge/github.com/trendvidia/sops/v3.svg
+    :target: https://pkg.go.dev/github.com/trendvidia/sops/v3
 
 Download
 --------
 
 Stable release
 ~~~~~~~~~~~~~~
-Binaries and packages of the latest stable release are available at `https://github.com/getsops/sops/releases <https://github.com/getsops/sops/releases>`_.
+Binaries and packages of the latest stable release are available at `https://github.com/trendvidia/sops/releases <https://github.com/trendvidia/sops/releases>`_.
 
 Development branch
 ~~~~~~~~~~~~~~~~~~
@@ -26,9 +26,9 @@ For the adventurous, unstable features are available in the `main` branch, which
 
 .. code:: bash
 
-    $ mkdir -p $GOPATH/src/github.com/getsops/sops/
-    $ git clone https://github.com/getsops/sops.git $GOPATH/src/github.com/getsops/sops/
-    $ cd $GOPATH/src/github.com/getsops/sops/
+    $ mkdir -p $GOPATH/src/github.com/trendvidia/sops/
+    $ git clone https://github.com/trendvidia/sops.git $GOPATH/src/github.com/trendvidia/sops/
+    $ cd $GOPATH/src/github.com/trendvidia/sops/
     $ make install
 
 (requires Go >= 1.25)
@@ -45,8 +45,8 @@ If you don't have Go installed, set it up with:
 Or whatever variation of the above fits your system and shell.
 
 To use **SOPS** as a Go library, see the
-`decrypt <https://pkg.go.dev/github.com/getsops/sops/v3/decrypt>`_ and
-`encrypt <https://pkg.go.dev/github.com/getsops/sops/v3/encrypt>`_
+`decrypt <https://pkg.go.dev/github.com/trendvidia/sops/v3/decrypt>`_ and
+`encrypt <https://pkg.go.dev/github.com/trendvidia/sops/v3/encrypt>`_
 packages — and the `Using SOPS as a Go library`_ section below for a
 worked walkthrough including context-aware APIs.
 
@@ -187,7 +187,7 @@ Test with the dev PGP key
 If you want to test **SOPS** without having to do a bunch of setup, you can use
 the example files and pgp key provided with the repository::
 
-    $ git clone https://github.com/getsops/sops.git
+    $ git clone https://github.com/trendvidia/sops.git
     $ cd sops
     $ gpg --import pgp/sops_functional_tests_key.asc
     $ sops edit example.yaml
@@ -332,7 +332,7 @@ A line-based ``keys.txt`` (no ``.pxf`` extension) continues to parse exactly
 as before. The PXF path is opt-in via the file extension.
 
 **For Go consumers:** the same schema is exposed as the public package
-``github.com/getsops/sops/v3/age/keypb``. ``keypb.ReadFile`` returns an
+``github.com/trendvidia/sops/v3/age/keypb``. ``keypb.ReadFile`` returns an
 ``*AgeKeyFile``; ``RecipientForName`` / ``NameForRecipient`` /
 ``Recipients`` let you go from a name to a recipient or vice-versa without
 depending on the rest of the age driver.
@@ -578,9 +578,9 @@ Using SOPS as a Go library
 Two top-level packages expose a stable Go API for programmatic
 encrypt/decrypt without going through the CLI:
 
-* `github.com/getsops/sops/v3/decrypt <https://pkg.go.dev/github.com/getsops/sops/v3/decrypt>`_
+* `github.com/trendvidia/sops/v3/decrypt <https://pkg.go.dev/github.com/trendvidia/sops/v3/decrypt>`_
   — load and decrypt sops-encrypted bytes / files.
-* `github.com/getsops/sops/v3/encrypt <https://pkg.go.dev/github.com/getsops/sops/v3/encrypt>`_
+* `github.com/trendvidia/sops/v3/encrypt <https://pkg.go.dev/github.com/trendvidia/sops/v3/encrypt>`_
   — produce sops-encrypted bytes / files from plaintext.
 
 Both packages mirror each other's shape: ``Data`` / ``DataWithFormat`` /
@@ -593,7 +593,7 @@ Decrypting
 
 .. code:: go
 
-    import "github.com/getsops/sops/v3/decrypt"
+    import "github.com/trendvidia/sops/v3/decrypt"
 
     // Format inferred from the path extension.
     plain, err := decrypt.File("config.enc.yaml", "yaml")
@@ -611,7 +611,7 @@ hung KMS call must be bounded:
         "context"
         "time"
 
-        "github.com/getsops/sops/v3/decrypt"
+        "github.com/trendvidia/sops/v3/decrypt"
     )
 
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -632,9 +632,9 @@ recipients, suffix / regex rules, MAC mode, and (optionally) a custom
 .. code:: go
 
     import (
-        "github.com/getsops/sops/v3"
-        "github.com/getsops/sops/v3/age"
-        "github.com/getsops/sops/v3/encrypt"
+        "github.com/trendvidia/sops/v3"
+        "github.com/trendvidia/sops/v3/age"
+        "github.com/trendvidia/sops/v3/encrypt"
     )
 
     mk, _ := age.MasterKeyFromRecipient("age1lzd99uklcjnc...")

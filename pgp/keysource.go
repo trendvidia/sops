@@ -1,10 +1,10 @@
 /*
-Package pgp contains an implementation of the github.com/getsops/sops/v3.MasterKey
+Package pgp contains an implementation of the github.com/trendvidia/sops/v3.MasterKey
 interface that encrypts and decrypts the data key by first trying with the
 github.com/ProtonMail/go-crypto/openpgp package and if that fails, by calling
 the "gpg" binary.
 */
-package pgp // import "github.com/getsops/sops/v3/pgp"
+package pgp // import "github.com/trendvidia/sops/v3/pgp"
 
 import (
 	"bytes"
@@ -26,7 +26,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/term"
 
-	"github.com/getsops/sops/v3/logging"
+	"github.com/trendvidia/sops/v3/logging"
 )
 
 const (

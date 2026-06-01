@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/getsops/sops/v3"
+	"github.com/trendvidia/sops/v3"
 	"github.com/stretchr/testify/assert"
 )
 

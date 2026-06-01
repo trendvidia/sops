@@ -12,7 +12,7 @@ import (
 	// empty import as per https://godoc.org/github.com/lib/pq
 	_ "github.com/lib/pq"
 
-	"github.com/getsops/sops/v3/logging"
+	"github.com/trendvidia/sops/v3/logging"
 	"github.com/sirupsen/logrus"
 	"go.yaml.in/yaml/v3"
 )
