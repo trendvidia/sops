@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.16.0
+
+Module rename: the fork no longer shadows the upstream module path.
+
+* **Module renamed from `github.com/getsops/sops/v3` to
+  `github.com/trendvidia/sops/v3`.** Downstream consumers can drop the
+  `replace github.com/getsops/sops/v3 => github.com/trendvidia/sops/v3`
+  directive from their go.mod and depend on the trendvidia module
+  directly. The CLI binary, command-line interface, on-disk file
+  format, and key-source semantics are unchanged — this is a
+  library-import path change only. The upstream-release version check
+  in `sops --version` now polls `trendvidia/sops` rather than
+  `getsops/sops`. PR #30.
+
 ## 3.15.0
 
 Extends PXF age-key support from `SOPS_AGE_KEY_FILE` to the two other
