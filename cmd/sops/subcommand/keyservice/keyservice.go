@@ -6,8 +6,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/trendvidia/sops/v3/keyservice"
-	"github.com/trendvidia/sops/v3/logging"
+	"github.com/trendvidia/sops/v4/keyservice"
+	"github.com/trendvidia/sops/v4/logging"
 
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"

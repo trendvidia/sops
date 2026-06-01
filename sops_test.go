@@ -9,9 +9,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/trendvidia/sops/v3/age"
-	"github.com/trendvidia/sops/v3/hcvault"
-	"github.com/trendvidia/sops/v3/pgp"
+	"github.com/trendvidia/sops/v4/age"
+	"github.com/trendvidia/sops/v4/hcvault"
+	"github.com/trendvidia/sops/v4/pgp"
 )
 
 type reverseCipher struct{}

@@ -7,14 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/trendvidia/sops/v3"
-	"github.com/trendvidia/sops/v3/cmd/sops/codes"
-	"github.com/trendvidia/sops/v3/cmd/sops/common"
-	"github.com/trendvidia/sops/v3/config"
-	"github.com/trendvidia/sops/v3/keyservice"
-	"github.com/trendvidia/sops/v3/logging"
-	"github.com/trendvidia/sops/v3/publish"
-	"github.com/trendvidia/sops/v3/version"
+	"github.com/trendvidia/sops/v4"
+	"github.com/trendvidia/sops/v4/cmd/sops/codes"
+	"github.com/trendvidia/sops/v4/cmd/sops/common"
+	"github.com/trendvidia/sops/v4/config"
+	"github.com/trendvidia/sops/v4/keyservice"
+	"github.com/trendvidia/sops/v4/logging"
+	"github.com/trendvidia/sops/v4/publish"
+	"github.com/trendvidia/sops/v4/version"
 
 	"github.com/sirupsen/logrus"
 )

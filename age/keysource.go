@@ -4,13 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"filippo.io/age"
@@ -20,8 +18,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 
-	"github.com/trendvidia/sops/v3/age/keypb"
-	"github.com/trendvidia/sops/v3/logging"
+	"github.com/trendvidia/sops/v4/age/keypb"
+	"github.com/trendvidia/sops/v4/logging"
 	"github.com/google/shlex"
 )
 
@@ -45,11 +43,12 @@ const (
 	// SopsAgeSshPrivateKeyFileEnv can be set as an environment variable pointing to
 	// a private SSH key file.
 	SopsAgeSshPrivateKeyFileEnv = "SOPS_AGE_SSH_PRIVATE_KEY_FILE"
-	// SopsAgeKeyUserConfigPath is the default age keys file path in
-	// getUserConfigDir().
-	SopsAgeKeyUserConfigPath = "sops/age/keys.txt"
-	// On macOS, os.UserConfigDir() ignores XDG_CONFIG_HOME. So we handle that manually.
-	xdgConfigHome = "XDG_CONFIG_HOME"
+	// DefaultAgeKeyFilePath is the standardized default age key file
+	// path (relative to $HOME) consulted when none of the
+	// SOPS_AGE_KEY{,_FILE,_CMD} env vars resolve. Hardcoded — same on
+	// every supported OS, no XDG_CONFIG_HOME indirection, no
+	// os.UserConfigDir() macOS/Windows quirks. PXF format only.
+	DefaultAgeKeyFilePath = ".config/sops/age/keys.pxf"
 	// KeyTypeIdentifier is the string used to identify an age MasterKey.
 	KeyTypeIdentifier = "age"
 )
@@ -423,13 +422,17 @@ func (key *MasterKey) loadAgeSSHIdentities() ([]age.Identity, []string, errSet) 
 	return identities, unusedLocations, errs
 }
 
-func getUserConfigDir() (string, error) {
-	if runtime.GOOS == "darwin" {
-		if userConfigDir, ok := os.LookupEnv(xdgConfigHome); ok && userConfigDir != "" {
-			return userConfigDir, nil
-		}
+// defaultAgeKeyFile returns the standardized default age key file
+// path: $HOME/DefaultAgeKeyFilePath. Identical across Linux, macOS,
+// and Windows ($HOME on Windows resolves via os.UserHomeDir() to
+// %USERPROFILE%). PXF format only — the legacy line-based keys.txt
+// at the old XDG path is no longer implicit.
+func defaultAgeKeyFile() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
 	}
-	return os.UserConfigDir()
+	return filepath.Join(home, filepath.FromSlash(DefaultAgeKeyFilePath)), nil
 }
 
 type identityReader struct {
@@ -437,36 +440,30 @@ type identityReader struct {
 	allowMultipleKeysPerLine bool
 }
 
-// loadIdentities attempts to load the age identities based on runtime
-// environment configurations (e.g. SopsAgeKeyEnv, SopsAgeKeyFileEnv,
-// SopsAgeSshPrivateKeyFileEnv, SopsAgeKeyUserConfigPath). It will load all
-// found references, and expects at least one configuration to be present.
+// loadIdentities attempts to load the age identities from every
+// configured source. Sources are consulted in this precedence-aligned
+// order (matching the encrypt-side pxfSources):
+//
+//  1. SOPS_AGE_KEY_FILE      — PXF if `.pxf` suffix; line-based otherwise.
+//  2. SOPS_AGE_KEY            — PXF if content sniffs PXF; line-based otherwise.
+//  3. SOPS_AGE_KEY_CMD        — PXF if stdout sniffs PXF; line-based otherwise.
+//  4. $HOME/.config/sops/age/keys.pxf — standardized default; PXF only,
+//     consulted only when the file exists.
+//
+// Plus a decrypt-only side channel (loaded up front; no encrypt-by-name
+// analogue):
+//
+//   SOPS_AGE_SSH_PRIVATE_KEY_FILE / _CMD, ~/.ssh/id_ed25519, ~/.ssh/id_rsa
+//
+// Identities from every resolving source are unioned — any one of them
+// can decrypt the file. Walk order is documentation only; semantics is
+// set-based. Order matters on the encrypt side (first-hit-wins
+// RecipientFromKeyFileByName) and the documented decrypt order mirrors
+// it for consistency.
 func (key *MasterKey) loadIdentities() (ParsedIdentities, []string, errSet) {
 	identities, unusedLocations, errs := key.loadAgeSSHIdentities()
 
 	var readers = make(map[string]identityReader, 0)
-
-	if ageKey, ok := os.LookupEnv(SopsAgeKeyEnv); ok {
-		data := []byte(ageKey)
-		if isPXFContent(data) {
-			ids, err := parsePXFIdentities(SopsAgeKeyEnv, data)
-			if err != nil {
-				errs = append(errs, err)
-			} else {
-				identities = append(identities, ids...)
-				if len(ids) == 0 {
-					unusedLocations = append(unusedLocations, SopsAgeKeyEnv)
-				}
-			}
-		} else {
-			readers[SopsAgeKeyEnv] = identityReader{
-				reader:                   bytes.NewReader(data),
-				allowMultipleKeysPerLine: true,
-			}
-		}
-	} else {
-		unusedLocations = append(unusedLocations, SopsAgeKeyEnv)
-	}
 
 	if ageKeyFile, ok := os.LookupEnv(SopsAgeKeyFileEnv); ok {
 		if strings.HasSuffix(ageKeyFile, keypb.FileExtension) {
@@ -495,6 +492,28 @@ func (key *MasterKey) loadIdentities() (ParsedIdentities, []string, errSet) {
 		unusedLocations = append(unusedLocations, SopsAgeKeyFileEnv)
 	}
 
+	if ageKey, ok := os.LookupEnv(SopsAgeKeyEnv); ok {
+		data := []byte(ageKey)
+		if isPXFContent(data) {
+			ids, err := parsePXFIdentities(SopsAgeKeyEnv, data)
+			if err != nil {
+				errs = append(errs, err)
+			} else {
+				identities = append(identities, ids...)
+				if len(ids) == 0 {
+					unusedLocations = append(unusedLocations, SopsAgeKeyEnv)
+				}
+			}
+		} else {
+			readers[SopsAgeKeyEnv] = identityReader{
+				reader:                   bytes.NewReader(data),
+				allowMultipleKeysPerLine: true,
+			}
+		}
+	} else {
+		unusedLocations = append(unusedLocations, SopsAgeKeyEnv)
+	}
+
 	if ageKeyCmd, ok := os.LookupEnv(SopsAgeKeyCmdEnv); ok {
 		out, err := getOutputFromCmd(ageKeyCmd, []string{fmt.Sprintf("%s=%s", SopsAgeRecipientEnv, key.Recipient)})
 		if err != nil {
@@ -519,22 +538,25 @@ func (key *MasterKey) loadIdentities() (ParsedIdentities, []string, errSet) {
 		unusedLocations = append(unusedLocations, SopsAgeKeyCmdEnv)
 	}
 
-	userConfigDir, err := getUserConfigDir()
-	if err != nil && len(readers) == 0 && len(identities) == 0 {
-		errs = append(errs, fmt.Errorf("user config directory could not be determined: %w", err))
-	} else if userConfigDir != "" {
-		ageKeyFilePath := filepath.Join(userConfigDir, filepath.FromSlash(SopsAgeKeyUserConfigPath))
-		f, err := os.Open(ageKeyFilePath)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			errs = append(errs, fmt.Errorf("failed to open file: %w", err))
-		} else if errors.Is(err, os.ErrNotExist) && len(readers) == 0 && len(identities) == 0 {
-			unusedLocations = append(unusedLocations, ageKeyFilePath)
-		} else if err == nil {
-			defer f.Close()
-			readers[ageKeyFilePath] = identityReader{
-				reader:                   f,
-				allowMultipleKeysPerLine: false,
+	// Standardized default: $HOME/.config/sops/age/keys.pxf (PXF only).
+	// Silent skip if $HOME is undeterminable or the file doesn't exist —
+	// the contract is "set an env var or drop a file at this path."
+	// Bubbling a "$HOME undeterminable" error here would mask the real
+	// "no source configured" diagnostic the caller surfaces when both
+	// identities and readers are empty.
+	if defaultPath, err := defaultAgeKeyFile(); err == nil {
+		if _, statErr := os.Stat(defaultPath); statErr == nil {
+			ids, err := loadPXFIdentities(defaultPath)
+			if err != nil {
+				errs = append(errs, err)
+			} else {
+				identities = append(identities, ids...)
+				if len(ids) == 0 {
+					unusedLocations = append(unusedLocations, defaultPath)
+				}
 			}
+		} else if len(readers) == 0 && len(identities) == 0 {
+			unusedLocations = append(unusedLocations, defaultPath)
 		}
 	}
 
@@ -730,12 +752,25 @@ func loadPXFIdentities(path string) (ParsedIdentities, error) {
 // content is not PXF (so the caller falls through to the next source).
 type pxfSourceFn func() (string, *keypb.AgeKeyFile, error)
 
-// pxfSources returns the encrypt-side PXF sources in precedence order:
-// SOPS_AGE_KEY_FILE > SOPS_AGE_KEY > SOPS_AGE_KEY_CMD. Each source is
-// lazy so SOPS_AGE_KEY_CMD only runs when no earlier source resolves.
+// pxfSources returns the PXF age key sources in precedence order:
+//
+//  1. SOPS_AGE_KEY_FILE      — when its path ends in `.pxf`.
+//  2. SOPS_AGE_KEY            — when its value is PXF content.
+//  3. SOPS_AGE_KEY_CMD        — when its stdout is PXF content.
+//  4. $HOME/.config/sops/age/keys.pxf — standardized default,
+//     consulted only when the file exists.
+//
+// Each source is lazy: later sources only run when earlier ones don't
+// resolve. The CLI translates --age-key-file / --age-key /
+// --age-key-cmd flags into the corresponding env vars at subcommand
+// entry, so CLI > env > default precedence falls out of the env-var
+// ordering above.
 //
 // SOPS_AGE_KEY_FILE is dispatched on its extension (`.pxf`); the env
 // and cmd sources are dispatched by content sniffing via isPXFContent.
+// The default file is PXF-only — there is no implicit line-based
+// fallback (callers wanting the legacy format must set
+// SOPS_AGE_KEY_FILE explicitly).
 func pxfSources() []pxfSourceFn {
 	return []pxfSourceFn{
 		func() (string, *keypb.AgeKeyFile, error) {
@@ -776,20 +811,29 @@ func pxfSources() []pxfSourceFn {
 			f, err := keypb.Parse(SopsAgeKeyCmdEnv, out)
 			return SopsAgeKeyCmdEnv, f, err
 		},
+		func() (string, *keypb.AgeKeyFile, error) {
+			path, err := defaultAgeKeyFile()
+			if err != nil {
+				return "", nil, nil
+			}
+			if _, err := os.Stat(path); err != nil {
+				return "", nil, nil
+			}
+			f, err := keypb.ReadFile(path)
+			return path, f, err
+		},
 	}
 }
 
 // DefaultRecipientFromKeyFile returns the Bech32-encoded age public
 // key of the "default" entry from the first PXF-formatted age key
-// source that has one set. Sources are consulted in this order:
-//
-//  1. SOPS_AGE_KEY_FILE — when the path ends in `.pxf`.
-//  2. SOPS_AGE_KEY     — when its value is PXF content.
-//  3. SOPS_AGE_KEY_CMD — when its stdout is PXF content.
+// source that has one set. See pxfSources for the precedence chain
+// (env-var driven; CLI flag values are translated to env vars at
+// subcommand entry).
 //
 // Returns "" with a nil error when no source supplies a default. The
 // function name is retained for backwards compatibility; the resolved
-// source may be the env or cmd.
+// source may be the env, the cmd, or the default file.
 //
 // Returns an error if a PXF source is malformed, if the default name
 // isn't present in its `keys` map, or if the default key's secret
@@ -811,8 +855,8 @@ func DefaultRecipientFromKeyFile() (string, error) {
 // RecipientFromKeyFileByName resolves `name` against the first
 // PXF-formatted age key source that contains it and returns the
 // Bech32-encoded age public key of that entry. Sources are consulted
-// in the same order as DefaultRecipientFromKeyFile. Backs the
-// --age-key-name / SOPS_AGE_KEY_NAME CLI surface.
+// in the same order as DefaultRecipientFromKeyFile (see pxfSources).
+// Backs the --age-key-name / SOPS_AGE_KEY_NAME CLI surface.
 //
 // Errors if no PXF source is configured, if all configured sources
 // lack the named entry, or if the entry's secret can't be derived
@@ -838,8 +882,8 @@ func RecipientFromKeyFileByName(name string) (string, error) {
 		return recipientFromAgeKeyFile(label, f, name, "key")
 	}
 	if !anyPXFSource {
-		return "", fmt.Errorf("--age-key-name requires a PXF-formatted age key source (%s, %s, or %s)",
-			SopsAgeKeyFileEnv, SopsAgeKeyEnv, SopsAgeKeyCmdEnv)
+		return "", fmt.Errorf("--age-key-name requires a PXF-formatted age key source (%s, %s, %s, or $HOME/%s)",
+			SopsAgeKeyFileEnv, SopsAgeKeyEnv, SopsAgeKeyCmdEnv, DefaultAgeKeyFilePath)
 	}
 	return "", fmt.Errorf("age key file %q: key %q not in keys", lastLabel, name)
 }

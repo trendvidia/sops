@@ -1,4 +1,4 @@
-package ini //import "github.com/trendvidia/sops/v3/stores/ini"
+package ini //import "github.com/trendvidia/sops/v4/stores/ini"
 
 import (
 	"bytes"
@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/trendvidia/sops/v3"
-	"github.com/trendvidia/sops/v3/config"
-	"github.com/trendvidia/sops/v3/stores"
+	"github.com/trendvidia/sops/v4"
+	"github.com/trendvidia/sops/v4/config"
+	"github.com/trendvidia/sops/v4/stores"
 	"gopkg.in/ini.v1"
 )
 

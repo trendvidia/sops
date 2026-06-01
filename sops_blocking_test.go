@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trendvidia/sops/v3/age"
-	"github.com/trendvidia/sops/v3/keyservice"
+	"github.com/trendvidia/sops/v4/age"
+	"github.com/trendvidia/sops/v4/keyservice"
 	"google.golang.org/grpc"
 )
 

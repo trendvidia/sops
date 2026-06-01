@@ -10,11 +10,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/trendvidia/sops/v3"
-	"github.com/trendvidia/sops/v3/aes"
-	"github.com/trendvidia/sops/v3/cmd/sops/common"
-	. "github.com/trendvidia/sops/v3/cmd/sops/formats" // Re-export
-	"github.com/trendvidia/sops/v3/config"
+	"github.com/trendvidia/sops/v4"
+	"github.com/trendvidia/sops/v4/aes"
+	"github.com/trendvidia/sops/v4/cmd/sops/common"
+	. "github.com/trendvidia/sops/v4/cmd/sops/formats" // Re-export
+	"github.com/trendvidia/sops/v4/config"
 )
 
 // FileWithContext is the context-aware sibling of [File]. The context is
@@ -92,7 +92,7 @@ func DataWithContext(ctx context.Context, data []byte, format string) (cleartext
 // (e.g. a memguard LockedBuffer wrapped as io.Writer) so the plaintext
 // never resides on unprotected heap during the decrypt → consumer
 // handoff. Format must be one of the strings recognized by
-// [github.com/trendvidia/sops/v3/cmd/sops/formats.FormatFromString].
+// [github.com/trendvidia/sops/v4/cmd/sops/formats.FormatFromString].
 //
 // Closure semantics: the FINAL plaintext (the emit-stage output) goes
 // directly into w. Per-leaf plaintext strings still allocate on the

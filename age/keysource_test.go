@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/trendvidia/sops/v4/age/keypb"
 )
 
 const (
@@ -255,7 +257,7 @@ func TestMasterKey_Decrypt(t *testing.T) {
 	})
 
 	t.Run("loaded identities", func(t *testing.T) {
-		overwriteUserConfigDir(t, t.TempDir())
+		overwriteUserHomeDir(t, t.TempDir())
 		key := &MasterKey{EncryptedKey: mockEncryptedKey}
 		t.Setenv(SopsAgeKeyEnv, mockIdentity)
 
@@ -267,7 +269,7 @@ func TestMasterKey_Decrypt(t *testing.T) {
 	t.Run("loaded identities ssh", func(t *testing.T) {
 		key := &MasterKey{EncryptedKey: mockEncryptedSshKey}
 		tmp := t.TempDir()
-		overwriteUserConfigDir(t, tmp)
+		overwriteUserHomeDir(t, tmp)
 
 		homeDir, err := os.UserHomeDir()
 		assert.NoError(t, err)
@@ -285,7 +287,7 @@ func TestMasterKey_Decrypt(t *testing.T) {
 
 	t.Run("no identities", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		overwriteUserConfigDir(t, tmpDir)
+		overwriteUserHomeDir(t, tmpDir)
 
 		key := &MasterKey{EncryptedKey: mockEncryptedKey}
 		got, err := key.Decrypt()
@@ -310,7 +312,7 @@ func TestMasterKey_Decrypt(t *testing.T) {
 	})
 
 	t.Run("invalid encrypted key", func(t *testing.T) {
-		overwriteUserConfigDir(t, t.TempDir())
+		overwriteUserHomeDir(t, t.TempDir())
 		key := &MasterKey{EncryptedKey: "invalid"}
 		t.Setenv(SopsAgeKeyEnv, mockIdentity)
 
@@ -366,7 +368,7 @@ func TestMasterKey_loadIdentities(t *testing.T) {
 	t.Run(SopsAgeKeyEnv, func(t *testing.T) {
 		tmpDir := t.TempDir()
 		// Overwrite to ensure local config is not picked up by tests
-		overwriteUserConfigDir(t, tmpDir)
+		overwriteUserHomeDir(t, tmpDir)
 
 		t.Setenv(SopsAgeKeyEnv, mockIdentity)
 
@@ -380,7 +382,7 @@ func TestMasterKey_loadIdentities(t *testing.T) {
 	t.Run(SopsAgeKeyEnv+" multiple", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		// Overwrite to ensure local config is not picked up by tests
-		overwriteUserConfigDir(t, tmpDir)
+		overwriteUserHomeDir(t, tmpDir)
 
 		t.Setenv(SopsAgeKeyEnv, mockIdentity+"\n"+mockOtherIdentity)
 
@@ -394,7 +396,7 @@ func TestMasterKey_loadIdentities(t *testing.T) {
 	t.Run(SopsAgeKeyFileEnv, func(t *testing.T) {
 		tmpDir := t.TempDir()
 		// Overwrite to ensure local config is not picked up by tests
-		overwriteUserConfigDir(t, tmpDir)
+		overwriteUserHomeDir(t, tmpDir)
 
 		keyPath := filepath.Join(tmpDir, "keys.txt")
 		assert.NoError(t, os.WriteFile(keyPath, []byte(mockIdentity), 0o644))
@@ -408,18 +410,17 @@ func TestMasterKey_loadIdentities(t *testing.T) {
 		assert.Len(t, unusedLocations, 6)
 	})
 
-	t.Run(SopsAgeKeyUserConfigPath, func(t *testing.T) {
+	t.Run(DefaultAgeKeyFilePath, func(t *testing.T) {
 		tmpDir := t.TempDir()
-		overwriteUserConfigDir(t, tmpDir)
+		overwriteUserHomeDir(t, tmpDir)
 
-		// We need to use getUserConfigDir and not tmpDir as it may add a suffix
-		cfgDir, err := getUserConfigDir()
-		assert.NoError(t, err)
-		keyPath := filepath.Join(cfgDir, SopsAgeKeyUserConfigPath)
-		assert.True(t, strings.HasPrefix(keyPath, cfgDir))
+		keyPath := filepath.Join(tmpDir, filepath.FromSlash(DefaultAgeKeyFilePath))
+		assert.True(t, strings.HasPrefix(keyPath, tmpDir))
 
-		assert.NoError(t, os.MkdirAll(filepath.Dir(keyPath), 0o700))
-		assert.NoError(t, os.WriteFile(keyPath, []byte(mockIdentity), 0o644))
+		writePXFKeyFileAt(t, keyPath, &keypb.AgeKeyFile{
+			Default: "primary",
+			Keys:    map[string]string{"primary": mockIdentity},
+		})
 
 		got, unusedLocations, errs := (&MasterKey{}).loadIdentities()
 		assert.Len(t, errs, 0)
@@ -429,7 +430,7 @@ func TestMasterKey_loadIdentities(t *testing.T) {
 
 	t.Run(SopsAgeSshPrivateKeyFileEnv, func(t *testing.T) {
 		tmpDir := t.TempDir()
-		overwriteUserConfigDir(t, tmpDir)
+		overwriteUserHomeDir(t, tmpDir)
 
 		homeDir, err := os.UserHomeDir()
 		assert.NoError(t, err)
@@ -449,7 +450,7 @@ func TestMasterKey_loadIdentities(t *testing.T) {
 
 	t.Run("no identity", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		overwriteUserConfigDir(t, tmpDir)
+		overwriteUserHomeDir(t, tmpDir)
 
 		got, unusedLocations, errs := (&MasterKey{}).loadIdentities()
 		assert.Len(t, errs, 0)
@@ -459,17 +460,16 @@ func TestMasterKey_loadIdentities(t *testing.T) {
 
 	t.Run("multiple identities", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		overwriteUserConfigDir(t, tmpDir)
+		overwriteUserHomeDir(t, tmpDir)
 
-		// We need to use getUserConfigDir and not tmpDir as it may add a suffix
-		cfgDir, err := getUserConfigDir()
-		assert.NoError(t, err)
-		keyPath1 := filepath.Join(cfgDir, SopsAgeKeyUserConfigPath)
-		assert.True(t, strings.HasPrefix(keyPath1, cfgDir))
+		// Identity 1: standardized default at $HOME/.config/sops/age/keys.pxf.
+		defaultPath := filepath.Join(tmpDir, filepath.FromSlash(DefaultAgeKeyFilePath))
+		writePXFKeyFileAt(t, defaultPath, &keypb.AgeKeyFile{
+			Default: "primary",
+			Keys:    map[string]string{"primary": mockIdentity},
+		})
 
-		assert.NoError(t, os.MkdirAll(filepath.Dir(keyPath1), 0o700))
-		assert.NoError(t, os.WriteFile(keyPath1, []byte(mockIdentity), 0o644))
-
+		// Identity 2: line-based file pointed at by SOPS_AGE_KEY_FILE.
 		keyPath2 := filepath.Join(tmpDir, "keys.txt")
 		assert.NoError(t, os.WriteFile(keyPath2, []byte(mockOtherIdentity), 0o644))
 		t.Setenv(SopsAgeKeyFileEnv, keyPath2)
@@ -483,7 +483,7 @@ func TestMasterKey_loadIdentities(t *testing.T) {
 	t.Run("parsing error", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		// Overwrite to ensure local config is not picked up by tests
-		overwriteUserConfigDir(t, tmpDir)
+		overwriteUserHomeDir(t, tmpDir)
 
 		t.Setenv(SopsAgeKeyEnv, "invalid")
 
@@ -499,7 +499,7 @@ func TestMasterKey_loadIdentities(t *testing.T) {
 	t.Run(SopsAgeSshPrivateKeyCmdEnv, func(t *testing.T) {
 		tmpDir := t.TempDir()
 		// Overwrite to ensure local config is not picked up by tests
-		overwriteUserConfigDir(t, tmpDir)
+		overwriteUserHomeDir(t, tmpDir)
 
 		t.Setenv(SopsAgeSshPrivateKeyCmdEnv, "echo '"+mockSshIdentity+"'")
 
@@ -513,7 +513,7 @@ func TestMasterKey_loadIdentities(t *testing.T) {
 	t.Run("cmd error", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		// Overwrite to ensure local config is not picked up by tests
-		overwriteUserConfigDir(t, tmpDir)
+		overwriteUserHomeDir(t, tmpDir)
 
 		t.Setenv(SopsAgeSshPrivateKeyCmdEnv, "meow")
 
@@ -529,7 +529,7 @@ func TestMasterKey_loadIdentities(t *testing.T) {
 	t.Run(SopsAgeKeyCmdEnv, func(t *testing.T) {
 		tmpDir := t.TempDir()
 		// Overwrite to ensure local config is not picked up by tests
-		overwriteUserConfigDir(t, tmpDir)
+		overwriteUserHomeDir(t, tmpDir)
 
 		t.Setenv(SopsAgeKeyCmdEnv, "echo '"+mockIdentity+"'")
 
@@ -543,7 +543,7 @@ func TestMasterKey_loadIdentities(t *testing.T) {
 	t.Run(SopsAgeRecipientEnv, func(t *testing.T) {
 		tmpDir := t.TempDir()
 		// Overwrite to ensure local config is not picked up by tests
-		overwriteUserConfigDir(t, tmpDir)
+		overwriteUserHomeDir(t, tmpDir)
 
 		t.Setenv(SopsAgeKeyCmdEnv, fmt.Sprintf("bash -c 'if [[ $SOPS_AGE_RECIPIENT = %s ]]; then echo %s; fi'", mockRecipient, mockIdentity))
 
@@ -563,7 +563,7 @@ func TestMasterKey_loadIdentities(t *testing.T) {
 	t.Run("cmd error", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		// Overwrite to ensure local config is not picked up by tests
-		overwriteUserConfigDir(t, tmpDir)
+		overwriteUserHomeDir(t, tmpDir)
 
 		t.Setenv(SopsAgeKeyCmdEnv, "meow")
 
@@ -577,31 +577,20 @@ func TestMasterKey_loadIdentities(t *testing.T) {
 	})
 }
 
-// overwriteUserConfigDir sets the user config directory and the user home directory
-// based on the os.UserConfigDir logic.
-func overwriteUserConfigDir(t *testing.T, path string) {
+// overwriteUserHomeDir points os.UserHomeDir() at path on every
+// supported platform. Used by tests that need to isolate the
+// standardized $HOME/.config/sops/age/keys.pxf default and the
+// ~/.ssh SSH-default-key paths from the developer's real home.
+func overwriteUserHomeDir(t *testing.T, path string) {
 	switch runtime.GOOS {
 	case "windows":
-		t.Setenv("AppData", path)
-	case "plan9": // This adds "/lib" as a suffix to $home
+		// os.UserHomeDir() reads USERPROFILE first, then HomeDrive+HomePath.
+		t.Setenv("USERPROFILE", path)
+	case "plan9":
+		// Plan 9's os.UserHomeDir() reads lowercase $home.
 		t.Setenv("home", path)
-	default: // Unix
-		t.Setenv("XDG_CONFIG_HOME", path)
+	default:
 		t.Setenv("HOME", path)
-	}
-}
-
-// Make sure that on all supported platforms but Windows, XDG_CONFIG_HOME
-// can be used to specify the user's home directory. For most platforms
-// this is handled by Go's os.UserConfigDir(), but for Darwin our code
-// in getUserConfigDir() handles this explicitly.
-func TestUserConfigDir(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		const dir = "/test/home/dir"
-		t.Setenv("XDG_CONFIG_HOME", dir)
-		home, err := getUserConfigDir()
-		assert.Nil(t, err)
-		assert.Equal(t, home, dir)
 	}
 }
 
@@ -628,7 +617,7 @@ func TestMasterKey_Identities_Passphrase(t *testing.T) {
 	t.Run(SopsAgeKeyFileEnv, func(t *testing.T) {
 		tmpDir := t.TempDir()
 		// Overwrite to ensure local config is not picked up by tests
-		overwriteUserConfigDir(t, tmpDir)
+		overwriteUserHomeDir(t, tmpDir)
 
 		keyPath := filepath.Join(tmpDir, "keys.txt")
 		assert.NoError(t, os.WriteFile(keyPath, []byte(mockEncryptedIdentity), 0o644))

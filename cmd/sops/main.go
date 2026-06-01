@@ -1,4 +1,4 @@
-package main // import "github.com/trendvidia/sops/v3/cmd/sops"
+package main // import "github.com/trendvidia/sops/v4/cmd/sops"
 
 import (
 	"context"
@@ -19,32 +19,32 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/trendvidia/sops/v3"
-	"github.com/trendvidia/sops/v3/aes"
-	"github.com/trendvidia/sops/v3/age"
-	_ "github.com/trendvidia/sops/v3/audit"
-	"github.com/trendvidia/sops/v3/azkv"
-	"github.com/trendvidia/sops/v3/cmd/sops/codes"
-	"github.com/trendvidia/sops/v3/cmd/sops/common"
-	"github.com/trendvidia/sops/v3/cmd/sops/subcommand/exec"
-	filestatuscmd "github.com/trendvidia/sops/v3/cmd/sops/subcommand/filestatus"
-	"github.com/trendvidia/sops/v3/cmd/sops/subcommand/groups"
-	keyservicecmd "github.com/trendvidia/sops/v3/cmd/sops/subcommand/keyservice"
-	publishcmd "github.com/trendvidia/sops/v3/cmd/sops/subcommand/publish"
-	"github.com/trendvidia/sops/v3/cmd/sops/subcommand/updatekeys"
-	"github.com/trendvidia/sops/v3/config"
-	"github.com/trendvidia/sops/v3/gcpkms"
-	"github.com/trendvidia/sops/v3/hckms"
-	"github.com/trendvidia/sops/v3/hcvault"
-	"github.com/trendvidia/sops/v3/keys"
-	"github.com/trendvidia/sops/v3/keyservice"
-	"github.com/trendvidia/sops/v3/kms"
-	"github.com/trendvidia/sops/v3/logging"
-	"github.com/trendvidia/sops/v3/pgp"
-	"github.com/trendvidia/sops/v3/stores"
-	"github.com/trendvidia/sops/v3/stores/dotenv"
-	"github.com/trendvidia/sops/v3/stores/json"
-	"github.com/trendvidia/sops/v3/version"
+	"github.com/trendvidia/sops/v4"
+	"github.com/trendvidia/sops/v4/aes"
+	"github.com/trendvidia/sops/v4/age"
+	_ "github.com/trendvidia/sops/v4/audit"
+	"github.com/trendvidia/sops/v4/azkv"
+	"github.com/trendvidia/sops/v4/cmd/sops/codes"
+	"github.com/trendvidia/sops/v4/cmd/sops/common"
+	"github.com/trendvidia/sops/v4/cmd/sops/subcommand/exec"
+	filestatuscmd "github.com/trendvidia/sops/v4/cmd/sops/subcommand/filestatus"
+	"github.com/trendvidia/sops/v4/cmd/sops/subcommand/groups"
+	keyservicecmd "github.com/trendvidia/sops/v4/cmd/sops/subcommand/keyservice"
+	publishcmd "github.com/trendvidia/sops/v4/cmd/sops/subcommand/publish"
+	"github.com/trendvidia/sops/v4/cmd/sops/subcommand/updatekeys"
+	"github.com/trendvidia/sops/v4/config"
+	"github.com/trendvidia/sops/v4/gcpkms"
+	"github.com/trendvidia/sops/v4/hckms"
+	"github.com/trendvidia/sops/v4/hcvault"
+	"github.com/trendvidia/sops/v4/keys"
+	"github.com/trendvidia/sops/v4/keyservice"
+	"github.com/trendvidia/sops/v4/kms"
+	"github.com/trendvidia/sops/v4/logging"
+	"github.com/trendvidia/sops/v4/pgp"
+	"github.com/trendvidia/sops/v4/stores"
+	"github.com/trendvidia/sops/v4/stores/dotenv"
+	"github.com/trendvidia/sops/v4/stores/json"
+	"github.com/trendvidia/sops/v4/version"
 )
 
 var (
@@ -1749,6 +1749,21 @@ func main() {
 			Usage:  "name of a key in SOPS_AGE_KEY_FILE (.pxf) whose recipient to encrypt with; ignored if --age is set",
 			EnvVar: "SOPS_AGE_KEY_NAME",
 		},
+		cli.StringFlag{
+			Name:   "age-key-file",
+			Usage:  "path to an age key file; takes precedence over $SOPS_AGE_KEY_FILE. PXF (.pxf) or line-based",
+			EnvVar: "SOPS_AGE_KEY_FILE",
+		},
+		cli.StringFlag{
+			Name:   "age-key",
+			Usage:  "inline age key material; takes precedence over $SOPS_AGE_KEY. PXF content (sniffed) or line-based",
+			EnvVar: "SOPS_AGE_KEY",
+		},
+		cli.StringFlag{
+			Name:   "age-key-cmd",
+			Usage:  "command whose stdout is an age key file; takes precedence over $SOPS_AGE_KEY_CMD. PXF (sniffed) or line-based",
+			EnvVar: "SOPS_AGE_KEY_CMD",
+		},
 		cli.BoolFlag{
 			Name:  "in-place, i",
 			Usage: "write output back to the same file instead of stdout",
@@ -1896,6 +1911,26 @@ func main() {
 			EnvVar: "SOPS_DECRYPTION_ORDER",
 		},
 	}, keyserviceFlags...)
+
+	// app.Before translates the global --age-key-file / --age-key /
+	// --age-key-cmd flag values into the corresponding SOPS_AGE_KEY_*
+	// env vars so the library-side key-source resolution (encrypt and
+	// decrypt) sees them at the top of its precedence chain. The flags
+	// themselves bind EnvVar, so c.String already implements CLI > env
+	// precedence; this hook propagates the resolved value into the
+	// process environment that the library reads.
+	app.Before = func(c *cli.Context) error {
+		if v := c.String("age-key-file"); v != "" {
+			os.Setenv(age.SopsAgeKeyFileEnv, v)
+		}
+		if v := c.String("age-key"); v != "" {
+			os.Setenv(age.SopsAgeKeyEnv, v)
+		}
+		if v := c.String("age-key-cmd"); v != "" {
+			os.Setenv(age.SopsAgeKeyCmdEnv, v)
+		}
+		return nil
+	}
 
 	app.Action = func(c *cli.Context) error {
 		isDecryptMode := c.Bool("decrypt")

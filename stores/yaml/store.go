@@ -1,4 +1,4 @@
-package yaml //import "github.com/trendvidia/sops/v3/stores/yaml"
+package yaml //import "github.com/trendvidia/sops/v4/stores/yaml"
 
 import (
 	"bytes"
@@ -7,9 +7,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/trendvidia/sops/v3"
-	"github.com/trendvidia/sops/v3/config"
-	"github.com/trendvidia/sops/v3/stores"
+	"github.com/trendvidia/sops/v4"
+	"github.com/trendvidia/sops/v4/config"
+	"github.com/trendvidia/sops/v4/stores"
 	"go.yaml.in/yaml/v3"
 )
 

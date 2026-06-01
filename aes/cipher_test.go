@@ -9,7 +9,7 @@ import (
 	"testing/quick"
 	"time"
 
-	"github.com/trendvidia/sops/v3"
+	"github.com/trendvidia/sops/v4"
 	"github.com/stretchr/testify/assert"
 )
 

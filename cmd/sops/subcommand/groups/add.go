@@ -3,9 +3,9 @@ package groups
 import (
 	"os"
 
-	"github.com/trendvidia/sops/v3"
-	"github.com/trendvidia/sops/v3/cmd/sops/common"
-	"github.com/trendvidia/sops/v3/keyservice"
+	"github.com/trendvidia/sops/v4"
+	"github.com/trendvidia/sops/v4/cmd/sops/common"
+	"github.com/trendvidia/sops/v4/keyservice"
 )
 
 // AddOpts are the options for adding a key group to a SOPS file
