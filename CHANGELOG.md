@@ -27,11 +27,11 @@ recipients passed via `--age` continue to work unchanged.
   `DefaultRecipientFromKeyFile`) and `MasterKey.loadIdentities`
   (decrypt-side) now consult the same ordered list:
 
-  1. `SOPS_AGE_KEY_FILE`
-  2. `SOPS_AGE_KEY`
-  3. `SOPS_AGE_KEY_CMD`
-  4. `$HOME/.config/sops/age/keys.pxf` — standardized default,
-     consulted only when the file exists.
+    1. `SOPS_AGE_KEY_FILE`
+    1. `SOPS_AGE_KEY`
+    1. `SOPS_AGE_KEY_CMD`
+    1. `$HOME/.config/sops/age/keys.pxf` — standardized default,
+       consulted only when the file exists.
 
   Plus a decrypt-only side channel for SSH identities
   (`SOPS_AGE_SSH_PRIVATE_KEY_FILE` / `_CMD`, `~/.ssh/id_ed25519`,
