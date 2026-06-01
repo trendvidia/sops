@@ -225,7 +225,7 @@ the ``--age`` option or the **SOPS_AGE_RECIPIENTS** environment variable:
     $ sops encrypt --age age1yt3tfqlfrwdwx0z0ynwplcr6qxcxfaqycuprpmy89nr83ltx74tqdpszlw test.yaml > test.enc.yaml
 
 Key sources
-^^^^^^^^^^^
+***********
 
 SOPS resolves age keys (for both encrypt and decrypt) from the following
 ordered list of sources. The first three are explicit; the fourth is a
