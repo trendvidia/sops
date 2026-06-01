@@ -3,10 +3,10 @@
 
 // Package encrypt is the external API other Go programs can use to
 // encrypt SOPS files programmatically. Mirrors the surface of the
-// existing [github.com/trendvidia/sops/v3/decrypt] package.
+// existing [github.com/trendvidia/sops/v4/decrypt] package.
 //
 // Why it exists: until this package, programmatic encryption required
-// importing [github.com/trendvidia/sops/v3/cmd/sops/common.EncryptTree]
+// importing [github.com/trendvidia/sops/v4/cmd/sops/common.EncryptTree]
 // and wiring up keygroups, ciphers, and stores by hand. That works,
 // but `cmd/sops/common` is semantically internal — its API surface
 // is treated as an implementation detail of the CLI. The encrypt
@@ -24,13 +24,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/trendvidia/sops/v3"
-	"github.com/trendvidia/sops/v3/aes"
-	"github.com/trendvidia/sops/v3/cmd/sops/common"
-	. "github.com/trendvidia/sops/v3/cmd/sops/formats" // Re-export
-	"github.com/trendvidia/sops/v3/config"
-	"github.com/trendvidia/sops/v3/keyservice"
-	"github.com/trendvidia/sops/v3/version"
+	"github.com/trendvidia/sops/v4"
+	"github.com/trendvidia/sops/v4/aes"
+	"github.com/trendvidia/sops/v4/cmd/sops/common"
+	. "github.com/trendvidia/sops/v4/cmd/sops/formats" // Re-export
+	"github.com/trendvidia/sops/v4/config"
+	"github.com/trendvidia/sops/v4/keyservice"
+	"github.com/trendvidia/sops/v4/version"
 )
 
 // Options configures a single encrypt call. Mirrors the relevant
@@ -85,7 +85,7 @@ type Options struct {
 
 // Data encrypts plaintext in the named format using opts and returns
 // the ciphertext bytes. Format must be one of the strings recognized
-// by [github.com/trendvidia/sops/v3/cmd/sops/formats.FormatFromString]
+// by [github.com/trendvidia/sops/v4/cmd/sops/formats.FormatFromString]
 // (json, yaml, ini, dotenv, binary, protowire/pxf).
 func Data(plaintext []byte, format string, opts Options) ([]byte, error) {
 	return DataWithFormat(plaintext, FormatFromString(format), opts)

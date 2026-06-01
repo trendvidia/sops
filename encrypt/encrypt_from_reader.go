@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"io"
 
-	. "github.com/trendvidia/sops/v3/cmd/sops/formats" // Re-export
+	. "github.com/trendvidia/sops/v4/cmd/sops/formats" // Re-export
 )
 
 // DataFromReader reads plaintext from r, encrypts it under opts, and
-// returns the ciphertext. Symmetric to [github.com/trendvidia/sops/v3/decrypt.DataIntoWriter]
+// returns the ciphertext. Symmetric to [github.com/trendvidia/sops/v4/decrypt.DataIntoWriter]
 // on the decrypt side.
 //
 // Note on memory residency. Chameleon-style consumers that hold plaintext

@@ -10,8 +10,8 @@ HuaweiCloud KMS, age, and PGP.
 
 ------------
 
-.. image:: https://pkg.go.dev/badge/github.com/trendvidia/sops/v3.svg
-    :target: https://pkg.go.dev/github.com/trendvidia/sops/v3
+.. image:: https://pkg.go.dev/badge/github.com/trendvidia/sops/v4.svg
+    :target: https://pkg.go.dev/github.com/trendvidia/sops/v4
 
 Download
 --------
@@ -45,8 +45,8 @@ If you don't have Go installed, set it up with:
 Or whatever variation of the above fits your system and shell.
 
 To use **SOPS** as a Go library, see the
-`decrypt <https://pkg.go.dev/github.com/trendvidia/sops/v3/decrypt>`_ and
-`encrypt <https://pkg.go.dev/github.com/trendvidia/sops/v3/encrypt>`_
+`decrypt <https://pkg.go.dev/github.com/trendvidia/sops/v4/decrypt>`_ and
+`encrypt <https://pkg.go.dev/github.com/trendvidia/sops/v4/encrypt>`_
 packages — and the `Using SOPS as a Go library`_ section below for a
 worked walkthrough including context-aware APIs.
 
@@ -224,34 +224,48 @@ the ``--age`` option or the **SOPS_AGE_RECIPIENTS** environment variable:
 
     $ sops encrypt --age age1yt3tfqlfrwdwx0z0ynwplcr6qxcxfaqycuprpmy89nr83ltx74tqdpszlw test.yaml > test.enc.yaml
 
-When decrypting a file with the corresponding identity, SOPS will look for a
-text file name ``keys.txt`` located in a ``sops`` subdirectory of your user
-configuration directory. 
+Key sources
+^^^^^^^^^^^
 
-- **Linux**
+SOPS resolves age keys (for both encrypt and decrypt) from the following
+ordered list of sources. The first three are explicit; the fourth is a
+standardized default consulted only when nothing earlier resolves.
 
-  - Looks for ``keys.txt`` in ``$XDG_CONFIG_HOME/sops/age/keys.txt``;
-  - Falls back to ``$HOME/.config/sops/age/keys.txt`` if ``$XDG_CONFIG_HOME`` isn’t set.
+#. **CLI flags** — ``--age-key-file=PATH``, ``--age-key=VALUE``,
+   ``--age-key-cmd=CMD``. Each is a global flag (must precede the
+   subcommand: ``sops --age-key-file=keys.pxf encrypt …``).
+#. **Environment variables** — **SOPS_AGE_KEY_FILE**, **SOPS_AGE_KEY**,
+   **SOPS_AGE_KEY_CMD**. ``SOPS_AGE_KEY_CMD``'s output can read the
+   recipient for which to return the private key from
+   **SOPS_AGE_RECIPIENT**.
+#. **The standardized default file** — ``$HOME/.config/sops/age/keys.pxf``.
+   Same path on every platform (Linux, macOS, Windows; ``$HOME`` resolves
+   via ``os.UserHomeDir()``). PXF format only — a line-based ``keys.txt``
+   at this location is **not** picked up implicitly (point
+   ``SOPS_AGE_KEY_FILE`` at it explicitly if you need the legacy format).
 
-- **macOS**
+Each CLI flag takes precedence over its corresponding env var (which it
+also reads as a fallback via ``EnvVar`` binding). Env vars take
+precedence over the default file. On **encrypt-by-name** (``--age-key-name``
+/ ``SOPS_AGE_KEY_NAME``) the first source containing the requested name
+wins. On **decrypt** every resolving source contributes identities to a
+union — any one of them can decrypt the file.
 
-  - Looks for ``keys.txt`` in ``$XDG_CONFIG_HOME/sops/age/keys.txt``;
-  - Falls back to ``$HOME/Library/Application Support/sops/age/keys.txt`` if ``$XDG_CONFIG_HOME`` isn’t set.
+Each contents form:
 
-- **Windows**
+- ``--age-key-file`` / ``SOPS_AGE_KEY_FILE`` — path to a key file. If
+  the path ends in ``.pxf`` it is parsed as PXF multi-key (see below);
+  otherwise as legacy line-based.
+- ``--age-key`` / ``SOPS_AGE_KEY`` — inline key material. If the value
+  positively sniffs as PXF content (top-level ``identifier = …`` or
+  ``identifier { … }``) it is parsed as PXF; otherwise as line-based.
+- ``--age-key-cmd`` / ``SOPS_AGE_KEY_CMD`` — a command whose stdout is
+  treated the same as ``--age-key`` (PXF-sniffed or line-based).
+- ``$HOME/.config/sops/age/keys.pxf`` — PXF format only.
 
-  - Looks for ``keys.txt`` in `%AppData%\\sops\\age\\keys.txt``.
-
-You can override the default lookup by:
-
-- setting the environment variable **SOPS_AGE_KEY_FILE**;
-- setting the **SOPS_AGE_KEY** environment variable;
-- providing a command to output the age keys by setting the **SOPS_AGE_KEY_CMD** environment variable.
-  This command can read the age recipient for which to return the private key from the **SOPS_AGE_RECIPIENT** environment variable.
-
-The contents of this key file should be a list of age X25519 identities, one
-per line. Lines beginning with ``#`` are considered comments and ignored. Each
-identity will be tried in sequence until one is able to decrypt the data.
+A legacy line-based key file contains age X25519 identities, one per
+line. Lines beginning with ``#`` are comments. Each identity is tried in
+sequence until one decrypts the data.
 
 If you need multiple named keys in a single file — for example because the
 secrets manager you fetch keys from prefers one entry over many — see
@@ -275,11 +289,15 @@ Note that only ``ssh-rsa`` and ``ssh-ed25519`` are supported.
 Using a PXF multi-key file
 **************************
 
-If your **SOPS_AGE_KEY_FILE** path ends in ``.pxf``, SOPS parses it as a
-structured PXF-encoded message holding a map of named secret keys with an
-optional ``default``. This is useful when you fetch keys from a secret store
-(e.g. Bitwarden) that prefers one entry over many, or when one user manages
-several keys and wants them named per environment.
+If a PXF-formatted key source resolves (``SOPS_AGE_KEY_FILE`` ending in
+``.pxf``, ``SOPS_AGE_KEY`` / ``SOPS_AGE_KEY_CMD`` content sniffing as PXF,
+the ``$HOME/.config/sops/age/keys.pxf`` default, or any of these via the
+``--age-key-file`` / ``--age-key`` / ``--age-key-cmd`` CLI flags) SOPS
+parses it as a structured PXF-encoded message holding a map of named
+secret keys with an optional ``default``. This is useful when you fetch
+keys from a secret store (e.g. Bitwarden) that prefers one entry over
+many, or when one user manages several keys and wants them named per
+environment.
 
 The on-disk format:
 
@@ -332,7 +350,7 @@ A line-based ``keys.txt`` (no ``.pxf`` extension) continues to parse exactly
 as before. The PXF path is opt-in via the file extension.
 
 **For Go consumers:** the same schema is exposed as the public package
-``github.com/trendvidia/sops/v3/age/keypb``. ``keypb.ReadFile`` returns an
+``github.com/trendvidia/sops/v4/age/keypb``. ``keypb.ReadFile`` returns an
 ``*AgeKeyFile``; ``RecipientForName`` / ``NameForRecipient`` /
 ``Recipients`` let you go from a name to a recipient or vice-versa without
 depending on the rest of the age driver.
@@ -578,9 +596,9 @@ Using SOPS as a Go library
 Two top-level packages expose a stable Go API for programmatic
 encrypt/decrypt without going through the CLI:
 
-* `github.com/trendvidia/sops/v3/decrypt <https://pkg.go.dev/github.com/trendvidia/sops/v3/decrypt>`_
+* `github.com/trendvidia/sops/v4/decrypt <https://pkg.go.dev/github.com/trendvidia/sops/v4/decrypt>`_
   — load and decrypt sops-encrypted bytes / files.
-* `github.com/trendvidia/sops/v3/encrypt <https://pkg.go.dev/github.com/trendvidia/sops/v3/encrypt>`_
+* `github.com/trendvidia/sops/v4/encrypt <https://pkg.go.dev/github.com/trendvidia/sops/v4/encrypt>`_
   — produce sops-encrypted bytes / files from plaintext.
 
 Both packages mirror each other's shape: ``Data`` / ``DataWithFormat`` /
@@ -593,7 +611,7 @@ Decrypting
 
 .. code:: go
 
-    import "github.com/trendvidia/sops/v3/decrypt"
+    import "github.com/trendvidia/sops/v4/decrypt"
 
     // Format inferred from the path extension.
     plain, err := decrypt.File("config.enc.yaml", "yaml")
@@ -611,7 +629,7 @@ hung KMS call must be bounded:
         "context"
         "time"
 
-        "github.com/trendvidia/sops/v3/decrypt"
+        "github.com/trendvidia/sops/v4/decrypt"
     )
 
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -632,9 +650,9 @@ recipients, suffix / regex rules, MAC mode, and (optionally) a custom
 .. code:: go
 
     import (
-        "github.com/trendvidia/sops/v3"
-        "github.com/trendvidia/sops/v3/age"
-        "github.com/trendvidia/sops/v3/encrypt"
+        "github.com/trendvidia/sops/v4"
+        "github.com/trendvidia/sops/v4/age"
+        "github.com/trendvidia/sops/v4/encrypt"
     )
 
     mk, _ := age.MasterKeyFromRecipient("age1lzd99uklcjnc...")

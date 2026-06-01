@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/trendvidia/sops/v3/logging"
+	"github.com/trendvidia/sops/v4/logging"
 	"github.com/google/go-cmp/cmp"
 	vault "github.com/hashicorp/vault/api"
 

@@ -1,9 +1,9 @@
 /*
-Package azkv contains an implementation of the github.com/trendvidia/sops/v3/keys.MasterKey
+Package azkv contains an implementation of the github.com/trendvidia/sops/v4/keys.MasterKey
 interface that encrypts and decrypts the data key using Azure Key Vault with the
 Azure Key Vault Keys client module for Go.
 */
-package azkv // import "github.com/trendvidia/sops/v3/azkv"
+package azkv // import "github.com/trendvidia/sops/v4/azkv"
 
 import (
 	"context"
@@ -19,7 +19,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
 	"github.com/sirupsen/logrus"
 
-	"github.com/trendvidia/sops/v3/logging"
+	"github.com/trendvidia/sops/v4/logging"
 )
 
 const (

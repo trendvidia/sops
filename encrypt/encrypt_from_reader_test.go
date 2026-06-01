@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trendvidia/sops/v3"
-	"github.com/trendvidia/sops/v3/decrypt"
-	"github.com/trendvidia/sops/v3/encrypt"
+	"github.com/trendvidia/sops/v4"
+	"github.com/trendvidia/sops/v4/decrypt"
+	"github.com/trendvidia/sops/v4/encrypt"
 )
 
 // TestDataFromReader_ProducesBytewiseIdenticalOutput proves that

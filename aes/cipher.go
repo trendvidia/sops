@@ -1,7 +1,7 @@
 /*
 Package aes defines a Cipher that uses 256-bit AES-GCM authenticated encryption to encrypt values the SOPS tree.
 */
-package aes //import "github.com/trendvidia/sops/v3/aes"
+package aes //import "github.com/trendvidia/sops/v4/aes"
 
 import (
 	cryptoaes "crypto/aes"
@@ -13,8 +13,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/trendvidia/sops/v3"
-	"github.com/trendvidia/sops/v3/logging"
+	"github.com/trendvidia/sops/v4"
+	"github.com/trendvidia/sops/v4/logging"
 	"github.com/sirupsen/logrus"
 )
 

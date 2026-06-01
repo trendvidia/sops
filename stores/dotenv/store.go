@@ -1,13 +1,13 @@
-package dotenv //import "github.com/trendvidia/sops/v3/stores/dotenv"
+package dotenv //import "github.com/trendvidia/sops/v4/stores/dotenv"
 
 import (
 	"bytes"
 	"fmt"
 	"strings"
 
-	"github.com/trendvidia/sops/v3"
-	"github.com/trendvidia/sops/v3/config"
-	"github.com/trendvidia/sops/v3/stores"
+	"github.com/trendvidia/sops/v4"
+	"github.com/trendvidia/sops/v4/config"
+	"github.com/trendvidia/sops/v4/stores"
 )
 
 // Store handles storage of dotenv data

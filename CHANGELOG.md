@@ -1,5 +1,72 @@
 # Changelog
 
+## 4.0.0
+
+Major release. Unifies the age key-source resolution between encrypt
+and decrypt, makes the standardized default path platform-uniform, and
+adds CLI flags so callers no longer have to drive the library
+exclusively through environment variables. Module path bumps to
+`github.com/trendvidia/sops/v4` per Go semantic-import-versioning.
+
+**BREAKING**: the implicit XDG/`os.UserConfigDir()`-based fallback to
+`~/.config/sops/age/keys.txt` (line-based, single-bag) is gone.
+Operators relying on that file must either move its contents into a
+PXF-formatted `keys.pxf` at the new standardized default location, or
+set `SOPS_AGE_KEY_FILE` (or `--age-key-file`) explicitly. Decrypt-side
+SSH identities, `SOPS_AGE_KEY{,_FILE,_CMD}` env vars, and inline
+recipients passed via `--age` continue to work unchanged.
+
+* **Module path: `github.com/trendvidia/sops/v3` →
+  `github.com/trendvidia/sops/v4`.** Mechanical consumer-side update —
+  one-shot sed of every `…/v3/…` import to `…/v4/…`. Required by Go
+  semver: the major version is encoded in the module path so v3 and v4
+  can coexist in the same dependency graph during a migration.
+
+* **Unified four-source key resolution on both encrypt and decrypt.**
+  Both `pxfSources` (encrypt-side, via `RecipientFromKeyFileByName` /
+  `DefaultRecipientFromKeyFile`) and `MasterKey.loadIdentities`
+  (decrypt-side) now consult the same ordered list:
+
+  1. `SOPS_AGE_KEY_FILE`
+  2. `SOPS_AGE_KEY`
+  3. `SOPS_AGE_KEY_CMD`
+  4. `$HOME/.config/sops/age/keys.pxf` — standardized default,
+     consulted only when the file exists.
+
+  Plus a decrypt-only side channel for SSH identities
+  (`SOPS_AGE_SSH_PRIVATE_KEY_FILE` / `_CMD`, `~/.ssh/id_ed25519`,
+  `~/.ssh/id_rsa`). No encrypt-by-name analogue for SSH.
+
+  Encrypt-by-name returns from the first source containing the requested
+  name. Decrypt unions identities across every source that resolves.
+  Decrypt walk order is documentation-only (set semantics) but mirrors
+  the encrypt-side precedence chain so the documented contract is
+  identical between the two paths.
+
+* **Standardized default path: `$HOME/.config/sops/age/keys.pxf`.**
+  Replaces the prior `XDG_CONFIG_HOME` / `os.UserConfigDir()` /
+  macOS-special-case dance. Hardcoded, same path on every supported OS
+  (Linux, macOS, Windows — `$HOME` on Windows resolves via
+  `os.UserHomeDir()` to `%USERPROFILE%`). PXF format only — line-based
+  `keys.txt` at this path is no longer implicit. Exposed as the const
+  `age.DefaultAgeKeyFilePath`.
+
+* **New CLI flags: `--age-key-file`, `--age-key`, `--age-key-cmd`.**
+  Global flags (precede the subcommand: `sops --age-key-file=foo.pxf
+  encrypt …`). Each takes precedence over its corresponding
+  `SOPS_AGE_KEY*` env var; `EnvVar` is bound so unset CLI flags fall
+  back to the env value. An `app.Before` hook translates the resolved
+  value into `os.Setenv` so the library-side resolution chain sees it
+  at the top. Unblocks scripts that want to point the keystore at a
+  per-invocation file without mutating the ambient process env.
+
+* **Removed: `age.SopsAgeKeyUserConfigPath` constant,
+  `age.xdgConfigHome` constant, `age.getUserConfigDir` helper.**
+  All three were tied to the XDG fallback. Direct callers of these
+  symbols (rare; they were rarely surfaced outside the package) need
+  to switch to `age.DefaultAgeKeyFilePath` and
+  `os.UserHomeDir()`-derived paths.
+
 ## 3.16.0
 
 Module rename: the fork no longer shadows the upstream module path.

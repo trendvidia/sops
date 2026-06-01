@@ -4,14 +4,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trendvidia/sops/v3"
-	"github.com/trendvidia/sops/v3/age"
-	"github.com/trendvidia/sops/v3/azkv"
-	"github.com/trendvidia/sops/v3/gcpkms"
-	"github.com/trendvidia/sops/v3/hckms"
-	"github.com/trendvidia/sops/v3/hcvault"
-	"github.com/trendvidia/sops/v3/kms"
-	"github.com/trendvidia/sops/v3/pgp"
+	"github.com/trendvidia/sops/v4"
+	"github.com/trendvidia/sops/v4/age"
+	"github.com/trendvidia/sops/v4/azkv"
+	"github.com/trendvidia/sops/v4/gcpkms"
+	"github.com/trendvidia/sops/v4/hckms"
+	"github.com/trendvidia/sops/v4/hcvault"
+	"github.com/trendvidia/sops/v4/kms"
+	"github.com/trendvidia/sops/v4/pgp"
 	"github.com/stretchr/testify/assert"
 )
 

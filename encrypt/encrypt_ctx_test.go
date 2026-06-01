@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trendvidia/sops/v3"
-	"github.com/trendvidia/sops/v3/age"
-	"github.com/trendvidia/sops/v3/decrypt"
-	"github.com/trendvidia/sops/v3/encrypt"
+	"github.com/trendvidia/sops/v4"
+	"github.com/trendvidia/sops/v4/age"
+	"github.com/trendvidia/sops/v4/decrypt"
+	"github.com/trendvidia/sops/v4/encrypt"
 )
 
 func ageKeyGroupForCtx(t *testing.T) sops.KeyGroup {

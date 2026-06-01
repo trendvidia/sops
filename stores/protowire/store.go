@@ -7,7 +7,7 @@
 // This store uses the schema-free AST path of the protowire-go pxf package
 // (Parse / FormatDocument), so sops trees of arbitrary shape round-trip
 // without needing a proto descriptor.
-package protowire //import "github.com/trendvidia/sops/v3/stores/protowire"
+package protowire //import "github.com/trendvidia/sops/v4/stores/protowire"
 
 import (
 	"bytes"
@@ -18,9 +18,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trendvidia/sops/v3"
-	"github.com/trendvidia/sops/v3/config"
-	"github.com/trendvidia/sops/v3/stores"
+	"github.com/trendvidia/sops/v4"
+	"github.com/trendvidia/sops/v4/config"
+	"github.com/trendvidia/sops/v4/stores"
 	"github.com/trendvidia/protowire-go/encoding/pxf"
 )
 

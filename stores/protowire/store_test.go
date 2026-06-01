@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trendvidia/sops/v3"
-	"github.com/trendvidia/sops/v3/config"
+	"github.com/trendvidia/sops/v4"
+	"github.com/trendvidia/sops/v4/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

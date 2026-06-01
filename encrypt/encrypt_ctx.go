@@ -8,13 +8,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/trendvidia/sops/v3"
-	"github.com/trendvidia/sops/v3/aes"
-	"github.com/trendvidia/sops/v3/cmd/sops/common"
-	. "github.com/trendvidia/sops/v3/cmd/sops/formats" // Re-export
-	"github.com/trendvidia/sops/v3/config"
-	"github.com/trendvidia/sops/v3/keyservice"
-	"github.com/trendvidia/sops/v3/version"
+	"github.com/trendvidia/sops/v4"
+	"github.com/trendvidia/sops/v4/aes"
+	"github.com/trendvidia/sops/v4/cmd/sops/common"
+	. "github.com/trendvidia/sops/v4/cmd/sops/formats" // Re-export
+	"github.com/trendvidia/sops/v4/config"
+	"github.com/trendvidia/sops/v4/keyservice"
+	"github.com/trendvidia/sops/v4/version"
 )
 
 // DataWithContext is the context-aware sibling of [Data]. The ctx

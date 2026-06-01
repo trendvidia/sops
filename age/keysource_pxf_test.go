@@ -8,7 +8,7 @@ import (
 
 	"filippo.io/age"
 
-	"github.com/trendvidia/sops/v3/age/keypb"
+	"github.com/trendvidia/sops/v4/age/keypb"
 	"github.com/trendvidia/protowire-go/encoding/pxf"
 )
 
@@ -16,16 +16,27 @@ import (
 // `keys.pxf` file inside a fresh temp directory; returns the full path.
 func writePXFKeyFile(t *testing.T, file *keypb.AgeKeyFile) string {
 	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "keys.pxf")
+	writePXFKeyFileAt(t, path, file)
+	return path
+}
+
+// writePXFKeyFileAt encodes file and writes it to the given path,
+// creating parent directories as needed (0o700 perms on dirs, 0o600
+// on the file).
+func writePXFKeyFileAt(t *testing.T, path string, file *keypb.AgeKeyFile) {
+	t.Helper()
 	data, err := pxf.Marshal(file)
 	if err != nil {
 		t.Fatalf("marshal age key file: %v", err)
 	}
-	dir := t.TempDir()
-	path := filepath.Join(dir, "keys.pxf")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatalf("mkdir parents of %q: %v", path, err)
+	}
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatalf("write age key file: %v", err)
 	}
-	return path
 }
 
 func TestLoadPXFIdentities_LoadsAllKeys(t *testing.T) {
@@ -92,6 +103,7 @@ func TestDefaultRecipientFromKeyFile_Set(t *testing.T) {
 }
 
 func TestDefaultRecipientFromKeyFile_NoDefault(t *testing.T) {
+	overwriteUserHomeDir(t, t.TempDir())
 	path := writePXFKeyFile(t, &keypb.AgeKeyFile{
 		Keys: map[string]string{
 			"only-one": mockIdentity,
@@ -109,6 +121,7 @@ func TestDefaultRecipientFromKeyFile_NoDefault(t *testing.T) {
 }
 
 func TestDefaultRecipientFromKeyFile_NotPXFExtension(t *testing.T) {
+	overwriteUserHomeDir(t, t.TempDir())
 	// A path that doesn't end in .pxf must take the legacy line-based
 	// parse path; DefaultRecipientFromKeyFile must short-circuit to "".
 	dir := t.TempDir()
@@ -128,6 +141,7 @@ func TestDefaultRecipientFromKeyFile_NotPXFExtension(t *testing.T) {
 }
 
 func TestDefaultRecipientFromKeyFile_EnvUnset(t *testing.T) {
+	overwriteUserHomeDir(t, t.TempDir())
 	// Make sure no inherited value bleeds into the test.
 	os.Unsetenv(SopsAgeKeyFileEnv)
 
@@ -227,6 +241,7 @@ func TestRecipientFromKeyFileByName_NameNotInKeys(t *testing.T) {
 }
 
 func TestRecipientFromKeyFileByName_EnvUnset(t *testing.T) {
+	overwriteUserHomeDir(t, t.TempDir())
 	os.Unsetenv(SopsAgeKeyFileEnv)
 
 	_, err := RecipientFromKeyFileByName("anything")
@@ -239,6 +254,7 @@ func TestRecipientFromKeyFileByName_EnvUnset(t *testing.T) {
 }
 
 func TestRecipientFromKeyFileByName_NoPXFSource(t *testing.T) {
+	overwriteUserHomeDir(t, t.TempDir())
 	// SOPS_AGE_KEY_FILE doesn't end in .pxf, and neither SOPS_AGE_KEY
 	// nor SOPS_AGE_KEY_CMD is set to PXF content. --age-key-name has
 	// nothing to resolve against.
@@ -450,5 +466,117 @@ func TestRecipientFromKeyFileByName_FromSopsAgeKeyEnv(t *testing.T) {
 	}
 	if got != id.Recipient().String() {
 		t.Errorf("recipient: got %q, want %q", got, id.Recipient().String())
+	}
+}
+
+func TestLoadIdentities_DefaultPath(t *testing.T) {
+	// New v4 behavior: $HOME/.config/sops/age/keys.pxf is the
+	// standardized default consulted when none of the SOPS_AGE_KEY*
+	// env vars resolve. PXF format only.
+	tmp := t.TempDir()
+	overwriteUserHomeDir(t, tmp)
+	os.Unsetenv(SopsAgeKeyFileEnv)
+	os.Unsetenv(SopsAgeKeyEnv)
+	os.Unsetenv(SopsAgeKeyCmdEnv)
+
+	defaultPath := filepath.Join(tmp, filepath.FromSlash(DefaultAgeKeyFilePath))
+	writePXFKeyFileAt(t, defaultPath, &keypb.AgeKeyFile{
+		Default: "primary",
+		Keys:    map[string]string{"primary": mockIdentity},
+	})
+
+	ids, _, errs := (&MasterKey{}).loadIdentities()
+	if len(errs) > 0 {
+		t.Fatalf("loadIdentities errs: %v", errs)
+	}
+	if got, want := len(ids), 1; got != want {
+		t.Fatalf("identity count: got %d, want %d", got, want)
+	}
+}
+
+func TestLoadIdentities_LegacyKeysTxtAtDefaultPathNotImplicit(t *testing.T) {
+	// v4 contract change: only keys.pxf at the default path is
+	// implicit. A line-based keys.txt at the old XDG-style path is
+	// silently ignored unless the operator points SOPS_AGE_KEY_FILE
+	// at it.
+	tmp := t.TempDir()
+	overwriteUserHomeDir(t, tmp)
+	os.Unsetenv(SopsAgeKeyFileEnv)
+	os.Unsetenv(SopsAgeKeyEnv)
+	os.Unsetenv(SopsAgeKeyCmdEnv)
+
+	// Drop a line-based keys.txt where pre-v4 sops would have found it.
+	legacyDir := filepath.Join(tmp, ".config", "sops", "age")
+	if err := os.MkdirAll(legacyDir, 0o700); err != nil {
+		t.Fatalf("mkdir legacy dir: %v", err)
+	}
+	legacyPath := filepath.Join(legacyDir, "keys.txt")
+	if err := os.WriteFile(legacyPath, []byte(mockIdentity+"\n"), 0o600); err != nil {
+		t.Fatalf("write legacy keys.txt: %v", err)
+	}
+
+	ids, _, errs := (&MasterKey{}).loadIdentities()
+	if len(errs) > 0 {
+		t.Fatalf("loadIdentities errs: %v", errs)
+	}
+	if got := len(ids); got != 0 {
+		t.Errorf("legacy keys.txt at default dir should be ignored; loaded %d identity(ies)", got)
+	}
+}
+
+func TestDefaultRecipientFromKeyFile_FromDefaultPath(t *testing.T) {
+	// Encrypt-side symmetric coverage: no env source set, default
+	// $HOME/.config/sops/age/keys.pxf supplies the Default entry.
+	tmp := t.TempDir()
+	overwriteUserHomeDir(t, tmp)
+	os.Unsetenv(SopsAgeKeyFileEnv)
+	os.Unsetenv(SopsAgeKeyEnv)
+	os.Unsetenv(SopsAgeKeyCmdEnv)
+
+	defaultPath := filepath.Join(tmp, filepath.FromSlash(DefaultAgeKeyFilePath))
+	writePXFKeyFileAt(t, defaultPath, &keypb.AgeKeyFile{
+		Default: "primary",
+		Keys:    map[string]string{"primary": mockIdentity},
+	})
+
+	got, err := DefaultRecipientFromKeyFile()
+	if err != nil {
+		t.Fatalf("DefaultRecipientFromKeyFile: %v", err)
+	}
+	if got != mockRecipient {
+		t.Errorf("recipient: got %q, want %q", got, mockRecipient)
+	}
+}
+
+func TestDefaultRecipientFromKeyFile_EnvShadowsDefaultPath(t *testing.T) {
+	// Precedence: env source (SOPS_AGE_KEY_FILE) shadows the
+	// $HOME/.config/sops/age/keys.pxf default. The default's "ghost"
+	// entry must not bleed through.
+	tmp := t.TempDir()
+	overwriteUserHomeDir(t, tmp)
+	os.Unsetenv(SopsAgeKeyEnv)
+	os.Unsetenv(SopsAgeKeyCmdEnv)
+
+	// Default file has a default entry that would resolve if consulted.
+	defaultPath := filepath.Join(tmp, filepath.FromSlash(DefaultAgeKeyFilePath))
+	writePXFKeyFileAt(t, defaultPath, &keypb.AgeKeyFile{
+		Default: "ghost",
+		Keys:    map[string]string{"ghost": mockOtherIdentity},
+	})
+
+	// SOPS_AGE_KEY_FILE points at a higher-precedence file with its
+	// own (different) default.
+	envPath := writePXFKeyFile(t, &keypb.AgeKeyFile{
+		Default: "primary",
+		Keys:    map[string]string{"primary": mockIdentity},
+	})
+	t.Setenv(SopsAgeKeyFileEnv, envPath)
+
+	got, err := DefaultRecipientFromKeyFile()
+	if err != nil {
+		t.Fatalf("DefaultRecipientFromKeyFile: %v", err)
+	}
+	if got != mockRecipient {
+		t.Errorf("env source should shadow default-path; got %q, want %q (mockRecipient)", got, mockRecipient)
 	}
 }

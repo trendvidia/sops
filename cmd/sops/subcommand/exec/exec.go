@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/trendvidia/sops/v3/logging"
+	"github.com/trendvidia/sops/v4/logging"
 
 	"github.com/sirupsen/logrus"
 )
