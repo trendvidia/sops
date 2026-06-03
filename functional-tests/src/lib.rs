@@ -1713,10 +1713,7 @@ keys = {
         )
         .expect("write pxf");
 
-        let plain_path = prepare_temp_file(
-            "test_age_key_name_missing.yaml",
-            b"hello: world\n",
-        );
+        let plain_path = prepare_temp_file("test_age_key_name_missing.yaml", b"hello: world\n");
 
         let output = Command::new(SOPS_BINARY_PATH)
             .env("SOPS_AGE_KEY_FILE", &pxf_path)
@@ -1767,10 +1764,8 @@ keys = {
         )
         .expect("write decrypt pxf");
 
-        let plain_path = prepare_temp_file(
-            "test_wrong_key_file.yaml",
-            b"hello: world\nsecret: shh\n",
-        );
+        let plain_path =
+            prepare_temp_file("test_wrong_key_file.yaml", b"hello: world\nsecret: shh\n");
 
         // Encrypt with PXF A.
         let encrypt_out = Command::new(SOPS_BINARY_PATH)
