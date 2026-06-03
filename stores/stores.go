@@ -258,9 +258,22 @@ func hckmsKeysFromGroup(group sops.KeyGroup) (keys []hckmskey) {
 	return
 }
 
+// parseTimestamp parses a stored RFC3339 timestamp and wraps the
+// error with the offending field name so editors of sops blocks can
+// tell which value was malformed. Without this, a fat-fingered
+// timestamp surfaces as the bare time.Parse message with no field
+// context.
+func parseTimestamp(field, raw string) (time.Time, error) {
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("parsing %s timestamp: %w", field, err)
+	}
+	return t, nil
+}
+
 // ToInternal converts a storage-appropriate Metadata struct to a SOPS internal representation
 func (m *metadata) ToInternal() (sops.Metadata, error) {
-	lastModified, err := time.Parse(time.RFC3339, m.LastModified)
+	lastModified, err := parseTimestamp("lastmodified", m.LastModified)
 	if err != nil {
 		return sops.Metadata{}, err
 	}
@@ -390,7 +403,7 @@ func (m *metadata) internalKeygroups() ([]sops.KeyGroup, error) {
 }
 
 func (kmsKey *kmskey) toInternal() (*kms.MasterKey, error) {
-	creationDate, err := time.Parse(time.RFC3339, kmsKey.CreatedAt)
+	creationDate, err := parseTimestamp("kms.created_at", kmsKey.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -405,7 +418,7 @@ func (kmsKey *kmskey) toInternal() (*kms.MasterKey, error) {
 }
 
 func (gcpKmsKey *gcpkmskey) toInternal() (*gcpkms.MasterKey, error) {
-	creationDate, err := time.Parse(time.RFC3339, gcpKmsKey.CreatedAt)
+	creationDate, err := parseTimestamp("gcp_kms.created_at", gcpKmsKey.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -417,7 +430,7 @@ func (gcpKmsKey *gcpkmskey) toInternal() (*gcpkms.MasterKey, error) {
 }
 
 func (azkvKey *azkvkey) toInternal() (*azkv.MasterKey, error) {
-	creationDate, err := time.Parse(time.RFC3339, azkvKey.CreatedAt)
+	creationDate, err := parseTimestamp("azure_kv.created_at", azkvKey.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -431,7 +444,7 @@ func (azkvKey *azkvkey) toInternal() (*azkv.MasterKey, error) {
 }
 
 func (vaultKey *vaultkey) toInternal() (*hcvault.MasterKey, error) {
-	creationDate, err := time.Parse(time.RFC3339, vaultKey.CreatedAt)
+	creationDate, err := parseTimestamp("hc_vault.created_at", vaultKey.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -445,7 +458,7 @@ func (vaultKey *vaultkey) toInternal() (*hcvault.MasterKey, error) {
 }
 
 func (pgpKey *pgpkey) toInternal() (*pgp.MasterKey, error) {
-	creationDate, err := time.Parse(time.RFC3339, pgpKey.CreatedAt)
+	creationDate, err := parseTimestamp("pgp.created_at", pgpKey.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -464,7 +477,7 @@ func (ageKey *agekey) toInternal() (*age.MasterKey, error) {
 }
 
 func (hckmsKey *hckmskey) toInternal() (*hckms.MasterKey, error) {
-	creationDate, err := time.Parse(time.RFC3339, hckmsKey.CreatedAt)
+	creationDate, err := parseTimestamp("hc_kms.created_at", hckmsKey.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
