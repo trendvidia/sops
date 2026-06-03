@@ -1,5 +1,21 @@
 # Changelog
 
+## 4.0.1
+
+Patch release on top of the never-tagged 4.0.0 (module path bump
+and key-source refactor). Carries one user-visible diagnostic
+improvement plus three test-only PRs (#33, #34, #35) that hardened
+coverage of the v4 surface.
+
+* **Better diagnostics for malformed timestamps in `sops { }` metadata
+  blocks.** A new `stores.parseTimestamp` helper wraps each of the
+  seven `time.Parse(RFC3339, ...)` call sites with the offending
+  field name (`lastmodified`, `kms.created_at`, `gcp_kms.created_at`,
+  `azure_kv.created_at`, `hc_vault.created_at`, `pgp.created_at`,
+  `hc_kms.created_at`). A user hand-editing a sops file who
+  fat-fingers a timestamp now sees which field failed to parse rather
+  than the bare Go time-package message. PR #36.
+
 ## 4.0.0
 
 Major release. Unifies the age key-source resolution between encrypt
