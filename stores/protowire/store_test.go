@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/trendvidia/sops/v4"
+	"github.com/trendvidia/sops/v4/age"
 	"github.com/trendvidia/sops/v4/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -176,4 +178,78 @@ func lookup(branch sops.TreeBranch, key string) interface{} {
 		}
 	}
 	return nil
+}
+
+func TestEncryptedRoundTrip(t *testing.T) {
+	// Build a tree with realistic data and a fully-populated metadata
+	// block (including an age master key), emit it, reload it, and
+	// confirm both sides survive the PXF serialization round-trip.
+	lastModified := time.Date(2026, 5, 2, 13, 0, 0, 0, time.UTC)
+
+	original := sops.Tree{
+		Branches: sops.TreeBranches{
+			sops.TreeBranch{
+				{Key: "secret", Value: "ENC[AES256_GCM,data:abc,iv:def,tag:ghi,type:str]"},
+				{Key: "count", Value: 7},
+				{
+					Key: "nested",
+					Value: sops.TreeBranch{
+						{Key: "inner", Value: "ENC[AES256_GCM,data:xyz,iv:uvw,tag:rst,type:str]"},
+					},
+				},
+			},
+		},
+		Metadata: sops.Metadata{
+			LastModified:              lastModified,
+			MessageAuthenticationCode: "ENC[AES256_GCM,data:mac,iv:mi,tag:mt,type:str]",
+			Version:                   "3.16.0",
+			UnencryptedSuffix:         "_plain",
+			KeyGroups: []sops.KeyGroup{
+				{
+					&age.MasterKey{
+						Recipient:    "age1lzd99uklcjnc0e7d860axevet2cz99ce9pq6tzuzd05l5nr28ams36nvun",
+						EncryptedKey: "-----BEGIN AGE ENCRYPTED FILE-----\nMOCK\n-----END AGE ENCRYPTED FILE-----",
+					},
+				},
+			},
+		},
+	}
+
+	store := newStore()
+	encoded, err := store.EmitEncryptedFile(original)
+	require.NoError(t, err, "EmitEncryptedFile")
+	assert.Contains(t, string(encoded), "sops {", "metadata must be embedded as a sops block")
+
+	reloaded, err := store.LoadEncryptedFile(encoded)
+	require.NoError(t, err, "LoadEncryptedFile")
+
+	// Data branches survive.
+	require.Len(t, reloaded.Branches, 1)
+	assert.Equal(t, "ENC[AES256_GCM,data:abc,iv:def,tag:ghi,type:str]", lookup(reloaded.Branches[0], "secret"))
+	assert.Equal(t, 7, lookup(reloaded.Branches[0], "count"))
+	nested, ok := lookup(reloaded.Branches[0], "nested").(sops.TreeBranch)
+	require.True(t, ok, "nested must round-trip as a TreeBranch")
+	assert.Equal(t, "ENC[AES256_GCM,data:xyz,iv:uvw,tag:rst,type:str]", lookup(nested, "inner"))
+
+	// Metadata scalars survive.
+	assert.Equal(t, original.Metadata.LastModified, reloaded.Metadata.LastModified)
+	assert.Equal(t, original.Metadata.MessageAuthenticationCode, reloaded.Metadata.MessageAuthenticationCode)
+	assert.Equal(t, original.Metadata.Version, reloaded.Metadata.Version)
+	assert.Equal(t, original.Metadata.UnencryptedSuffix, reloaded.Metadata.UnencryptedSuffix)
+
+	// Age master key survives.
+	require.Len(t, reloaded.Metadata.KeyGroups, 1)
+	require.Len(t, reloaded.Metadata.KeyGroups[0], 1)
+	got, ok := reloaded.Metadata.KeyGroups[0][0].(*age.MasterKey)
+	require.True(t, ok, "first key must be *age.MasterKey")
+	assert.Equal(t, "age1lzd99uklcjnc0e7d860axevet2cz99ce9pq6tzuzd05l5nr28ams36nvun", got.Recipient)
+	assert.Contains(t, got.EncryptedKey, "MOCK")
+}
+
+func TestLoadEncryptedFileNoMetadata(t *testing.T) {
+	// Plaintext PXF (no `sops { ... }` block) must return
+	// MetadataNotFound, matching sibling stores.
+	store := newStore()
+	_, err := store.LoadEncryptedFile([]byte(`hello = "world"`))
+	assert.Equal(t, sops.MetadataNotFound, err)
 }

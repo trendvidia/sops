@@ -1617,4 +1617,84 @@ bar: |-
             "filename did not end with 'foobar'"
         );
     }
+
+    #[test]
+    fn test_encrypt_decrypt_with_age_key_name() {
+        // Multi-key PXF file with two named identities. Encrypt selecting
+        // `secondary` via --age-key-name, decrypt with the same PXF as
+        // SOPS_AGE_KEY_FILE, and confirm the plaintext round-trips. This
+        // exercises the encrypt-side name lookup AND the decrypt-side
+        // multi-identity probe end-to-end (no Go-level mocking).
+        let pxf_path = TMP_DIR.path().join("age-key-name.pxf");
+        std::fs::write(
+            &pxf_path,
+            r#"default = "primary"
+keys = {
+  primary: "AGE-SECRET-KEY-1G0Q5K9TV4REQ3ZSQRMTMG8NSWQGYT0T7TZ33RAZEE0GZYVZN0APSU24RK7"
+  secondary: "AGE-SECRET-KEY-1432K5YRNSC44GC4986NXMX6GVZ52WTMT9C79CLUVWYY4DKDHD5JSNDP4MC"
+}
+"#,
+        )
+        .expect("write pxf");
+
+        let plain_path = prepare_temp_file(
+            "test_age_key_name.yaml",
+            b"hello: world\nnumbers:\n  - 1\n  - 2\n  - 3\n",
+        );
+
+        // Encrypt with --age-key-name secondary.
+        let encrypt_out = Command::new(SOPS_BINARY_PATH)
+            .env("SOPS_AGE_KEY_FILE", &pxf_path)
+            .arg("encrypt")
+            .arg("--age-key-name")
+            .arg("secondary")
+            .arg(&plain_path)
+            .output()
+            .expect("Error running sops encrypt");
+        assert!(
+            encrypt_out.status.success(),
+            "sops encrypt --age-key-name failed: stderr={}",
+            String::from_utf8_lossy(&encrypt_out.stderr)
+        );
+        let encrypted = String::from_utf8_lossy(&encrypt_out.stdout);
+        assert!(
+            encrypted.contains("ENC["),
+            "encrypted output missing ENC[ markers: {}",
+            encrypted
+        );
+        // The secondary identity's recipient (computed at age key derivation
+        // time) must appear in the sops metadata.
+        assert!(
+            encrypted.contains("age1"),
+            "encrypted output missing age recipient: {}",
+            encrypted
+        );
+
+        let enc_path = TMP_DIR.path().join("test_age_key_name.enc.yaml");
+        std::fs::write(&enc_path, &encrypt_out.stdout).expect("write encrypted file");
+
+        // Decrypt with the same multi-key PXF as the only key source.
+        let decrypt_out = Command::new(SOPS_BINARY_PATH)
+            .env("SOPS_AGE_KEY_FILE", &pxf_path)
+            .arg("decrypt")
+            .arg(&enc_path)
+            .output()
+            .expect("Error running sops decrypt");
+        assert!(
+            decrypt_out.status.success(),
+            "sops decrypt failed: stderr={}",
+            String::from_utf8_lossy(&decrypt_out.stderr)
+        );
+        let plain = String::from_utf8_lossy(&decrypt_out.stdout);
+        assert!(
+            plain.contains("hello: world"),
+            "plaintext did not round-trip: {}",
+            plain
+        );
+        assert!(
+            plain.contains("- 1") && plain.contains("- 2") && plain.contains("- 3"),
+            "list values did not round-trip: {}",
+            plain
+        );
+    }
 }
