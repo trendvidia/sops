@@ -11,6 +11,7 @@ import (
 	"github.com/trendvidia/sops/v4"
 	"github.com/trendvidia/sops/v4/age"
 	"github.com/trendvidia/sops/v4/config"
+	"github.com/trendvidia/sops/v4/kms"
 )
 
 func newStore() *Store {
@@ -210,6 +211,15 @@ func TestEncryptedRoundTrip(t *testing.T) {
 						Recipient:    "age1lzd99uklcjnc0e7d860axevet2cz99ce9pq6tzuzd05l5nr28ams36nvun",
 						EncryptedKey: "-----BEGIN AGE ENCRYPTED FILE-----\nMOCK\n-----END AGE ENCRYPTED FILE-----",
 					},
+					// KMS key alongside the age key to verify CreationDate
+					// round-trips — age.MasterKey intentionally has no
+					// CreationDate field in the storage format, so KMS
+					// is the right shape to pin that behavior here.
+					&kms.MasterKey{
+						Arn:          "arn:aws:kms:us-east-1:000000000000:key/00000000-0000-0000-0000-000000000000",
+						EncryptedKey: "MOCK_KMS_KEY",
+						CreationDate: time.Date(2026, 4, 1, 10, 0, 0, 0, time.UTC),
+					},
 				},
 			},
 		},
@@ -237,13 +247,35 @@ func TestEncryptedRoundTrip(t *testing.T) {
 	assert.Equal(t, original.Metadata.Version, reloaded.Metadata.Version)
 	assert.Equal(t, original.Metadata.UnencryptedSuffix, reloaded.Metadata.UnencryptedSuffix)
 
-	// Age master key survives.
+	// Age and KMS master keys both survive. The reloaded group is
+	// grouped by key type (see internalGroupFrom in stores/stores.go:
+	// KMS first, ..., age last), so look them up by type rather than
+	// by source-order index.
 	require.Len(t, reloaded.Metadata.KeyGroups, 1)
-	require.Len(t, reloaded.Metadata.KeyGroups[0], 1)
-	got, ok := reloaded.Metadata.KeyGroups[0][0].(*age.MasterKey)
-	require.True(t, ok, "first key must be *age.MasterKey")
-	assert.Equal(t, "age1lzd99uklcjnc0e7d860axevet2cz99ce9pq6tzuzd05l5nr28ams36nvun", got.Recipient)
-	assert.Contains(t, got.EncryptedKey, "MOCK")
+	require.Len(t, reloaded.Metadata.KeyGroups[0], 2)
+	var gotAge *age.MasterKey
+	var gotKMS *kms.MasterKey
+	for _, k := range reloaded.Metadata.KeyGroups[0] {
+		switch v := k.(type) {
+		case *age.MasterKey:
+			gotAge = v
+		case *kms.MasterKey:
+			gotKMS = v
+		}
+	}
+	require.NotNil(t, gotAge, "age key missing from reloaded group")
+	require.NotNil(t, gotKMS, "kms key missing from reloaded group")
+
+	assert.Equal(t, "age1lzd99uklcjnc0e7d860axevet2cz99ce9pq6tzuzd05l5nr28ams36nvun", gotAge.Recipient)
+	assert.Contains(t, gotAge.EncryptedKey, "MOCK")
+
+	assert.Equal(t, "arn:aws:kms:us-east-1:000000000000:key/00000000-0000-0000-0000-000000000000", gotKMS.Arn)
+	assert.Equal(t, "MOCK_KMS_KEY", gotKMS.EncryptedKey)
+	// CreationDate round-trip: pins that the KMS key's timestamp
+	// survives the PXF encode/decode cycle, closing the question I
+	// flagged in the v4 audit but didn't verify.
+	assert.True(t, gotKMS.CreationDate.Equal(time.Date(2026, 4, 1, 10, 0, 0, 0, time.UTC)),
+		"KMS CreationDate did not round-trip: got %v", gotKMS.CreationDate)
 }
 
 func TestLoadEncryptedFileNoMetadata(t *testing.T) {
@@ -327,11 +359,9 @@ sops {
   version = "3.16.0"
 }
 `,
-			// The Go time package surfaces "parsing time ... cannot parse";
-			// the field name isn't included in the wrapped error today —
-			// the assertion pins what's actually emitted, not what would
-			// be nicer.
-			wantInErr: "parsing time",
+			// stores.parseTimestamp wraps with the field name so the
+			// error tells the user WHICH timestamp failed to parse.
+			wantInErr: "lastmodified",
 		},
 	}
 	store := newStore()

@@ -756,7 +756,7 @@ func TestExtractMetadata(t *testing.T) {
 
 	branches, metadata, err = ExtractMetadata([]sops.TreeBranch{empty}, MetadataOpts{Flatten: MetadataFlattenNone})
 	assert.NotNil(t, err)
-	assert.Equal(t, "parsing time \"\" as \"2006-01-02T15:04:05Z07:00\": cannot parse \"\" as \"2006\"", err.Error())
+	assert.Equal(t, "parsing lastmodified timestamp: parsing time \"\" as \"2006-01-02T15:04:05Z07:00\": cannot parse \"\" as \"2006\"", err.Error())
 	assert.Nil(t, branches)
 	assert.Equal(t, sops.Metadata{}, metadata)
 
