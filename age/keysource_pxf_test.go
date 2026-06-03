@@ -604,6 +604,189 @@ func TestDefaultRecipientFromKeyFile_FromDefaultPath(t *testing.T) {
 	}
 }
 
+func TestRecipientFromKeyFileByName_Hybrid(t *testing.T) {
+	// Named lookup of a hybrid (PQ) identity stored alongside X25519
+	// identities in a multi-key PXF file must resolve to the hybrid's
+	// recipient — verifies keypb.RecipientForName handles the hybrid
+	// branch when an arbitrary name (not just the default) selects it.
+	hybridID, err := age.ParseHybridIdentity(mockHybridIdentity)
+	if err != nil {
+		t.Fatalf("parse hybrid identity fixture: %v", err)
+	}
+	want := hybridID.Recipient().String()
+
+	path := writePXFKeyFile(t, &keypb.AgeKeyFile{
+		Keys: map[string]string{
+			"primary": mockIdentity,
+			"pq":      mockHybridIdentity,
+		},
+	})
+	t.Setenv(SopsAgeKeyFileEnv, path)
+
+	got, err := RecipientFromKeyFileByName("pq")
+	if err != nil {
+		t.Fatalf("RecipientFromKeyFileByName(pq): %v", err)
+	}
+	if got != want {
+		t.Errorf("hybrid named recipient: got %q, want %q", got, want)
+	}
+}
+
+func TestDefaultRecipientFromKeyFile_HybridFromSopsAgeKeyEnv(t *testing.T) {
+	// Hybrid identity served via SOPS_AGE_KEY (in-memory PXF) must
+	// resolve to its hybrid recipient. Covers the env-var branch of
+	// the source chain — previously only the FILE path was tested for
+	// hybrid identities.
+	overwriteUserHomeDir(t, t.TempDir())
+	os.Unsetenv(SopsAgeKeyFileEnv)
+	os.Unsetenv(SopsAgeKeyCmdEnv)
+
+	hybridID, err := age.ParseHybridIdentity(mockHybridIdentity)
+	if err != nil {
+		t.Fatalf("parse hybrid identity fixture: %v", err)
+	}
+	want := hybridID.Recipient().String()
+
+	t.Setenv(SopsAgeKeyEnv, string(pxfBytes(t, &keypb.AgeKeyFile{
+		Default: "pq",
+		Keys:    map[string]string{"pq": mockHybridIdentity},
+	})))
+
+	got, err := DefaultRecipientFromKeyFile()
+	if err != nil {
+		t.Fatalf("DefaultRecipientFromKeyFile: %v", err)
+	}
+	if got != want {
+		t.Errorf("hybrid default via SOPS_AGE_KEY: got %q, want %q", got, want)
+	}
+}
+
+func TestDefaultRecipientFromKeyFile_HybridFromSopsAgeKeyCmdEnv(t *testing.T) {
+	// Same as above, via SOPS_AGE_KEY_CMD's stdout — covers the cmd
+	// branch of the source chain for hybrid identities.
+	overwriteUserHomeDir(t, t.TempDir())
+	os.Unsetenv(SopsAgeKeyFileEnv)
+	os.Unsetenv(SopsAgeKeyEnv)
+
+	hybridID, err := age.ParseHybridIdentity(mockHybridIdentity)
+	if err != nil {
+		t.Fatalf("parse hybrid identity fixture: %v", err)
+	}
+	want := hybridID.Recipient().String()
+
+	dir := t.TempDir()
+	pxfFile := filepath.Join(dir, "keys.pxf")
+	if err := os.WriteFile(pxfFile, pxfBytes(t, &keypb.AgeKeyFile{
+		Default: "pq",
+		Keys:    map[string]string{"pq": mockHybridIdentity},
+	}), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	t.Setenv(SopsAgeKeyCmdEnv, "cat "+pxfFile)
+
+	got, err := DefaultRecipientFromKeyFile()
+	if err != nil {
+		t.Fatalf("DefaultRecipientFromKeyFile: %v", err)
+	}
+	if got != want {
+		t.Errorf("hybrid default via SOPS_AGE_KEY_CMD: got %q, want %q", got, want)
+	}
+}
+
+func TestDefaultRecipientFromKeyFile_FullPrecedenceChain(t *testing.T) {
+	// All four PXF sources active simultaneously, each supplying a
+	// distinct default identity. Walks the chain by progressively
+	// unsetting the winner and re-asserting, so the documented
+	// precedence (FILE > KEY > CMD > default-path) is empirically
+	// validated end-to-end.
+	tmp := t.TempDir()
+	overwriteUserHomeDir(t, tmp)
+
+	// Fourth identity for the default-path source — the other three
+	// reuse the existing mock fixtures so the assertions can pin the
+	// expected recipient at known values.
+	pathID, err := age.GenerateX25519Identity()
+	if err != nil {
+		t.Fatalf("generate identity for default-path source: %v", err)
+	}
+	pathSecret := pathID.String()
+	pathRecipient := pathID.Recipient().String()
+
+	otherRecipient := func() string {
+		id, err := age.ParseX25519Identity(mockOtherIdentity)
+		if err != nil {
+			t.Fatalf("parse mockOtherIdentity: %v", err)
+		}
+		return id.Recipient().String()
+	}()
+	hybridRecipient := func() string {
+		id, err := age.ParseHybridIdentity(mockHybridIdentity)
+		if err != nil {
+			t.Fatalf("parse hybrid fixture: %v", err)
+		}
+		return id.Recipient().String()
+	}()
+
+	// FILE source — default resolves to mockRecipient.
+	filePath := writePXFKeyFile(t, &keypb.AgeKeyFile{
+		Default: "winner",
+		Keys:    map[string]string{"winner": mockIdentity},
+	})
+	t.Setenv(SopsAgeKeyFileEnv, filePath)
+
+	// KEY env source — default resolves to mockOtherIdentity's recipient.
+	t.Setenv(SopsAgeKeyEnv, string(pxfBytes(t, &keypb.AgeKeyFile{
+		Default: "k",
+		Keys:    map[string]string{"k": mockOtherIdentity},
+	})))
+
+	// CMD env source — default resolves to hybrid's recipient.
+	cmdPxf := filepath.Join(t.TempDir(), "cmd.pxf")
+	if err := os.WriteFile(cmdPxf, pxfBytes(t, &keypb.AgeKeyFile{
+		Default: "h",
+		Keys:    map[string]string{"h": mockHybridIdentity},
+	}), 0o600); err != nil {
+		t.Fatalf("write cmd fixture: %v", err)
+	}
+	t.Setenv(SopsAgeKeyCmdEnv, "cat "+cmdPxf)
+
+	// Default-path source — default resolves to the freshly generated
+	// X25519 identity above.
+	defaultPath := filepath.Join(tmp, filepath.FromSlash(DefaultAgeKeyFilePath))
+	writePXFKeyFileAt(t, defaultPath, &keypb.AgeKeyFile{
+		Default: "d",
+		Keys:    map[string]string{"d": pathSecret},
+	})
+
+	steps := []struct {
+		name string
+		want string
+		// unsetBefore: env var to clear before this step, so the
+		// previous-step winner stops resolving. Empty on the first
+		// step (all four are live then).
+		unsetBefore string
+	}{
+		{name: "FILE wins", want: mockRecipient},
+		{name: "KEY env wins after FILE unset", want: otherRecipient, unsetBefore: SopsAgeKeyFileEnv},
+		{name: "CMD env wins after KEY unset", want: hybridRecipient, unsetBefore: SopsAgeKeyEnv},
+		{name: "default-path wins after CMD unset", want: pathRecipient, unsetBefore: SopsAgeKeyCmdEnv},
+	}
+	for _, step := range steps {
+		t.Run(step.name, func(t *testing.T) {
+			if step.unsetBefore != "" {
+				os.Unsetenv(step.unsetBefore)
+			}
+			got, err := DefaultRecipientFromKeyFile()
+			if err != nil {
+				t.Fatalf("DefaultRecipientFromKeyFile: %v", err)
+			}
+			if got != step.want {
+				t.Errorf("recipient: got %q, want %q", got, step.want)
+			}
+		})
+	}
+}
+
 func TestDefaultRecipientFromKeyFile_EnvShadowsDefaultPath(t *testing.T) {
 	// Precedence: env source (SOPS_AGE_KEY_FILE) shadows the
 	// $HOME/.config/sops/age/keys.pxf default. The default's "ghost"
