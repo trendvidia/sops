@@ -1697,4 +1697,108 @@ keys = {
             plain
         );
     }
+
+    #[test]
+    fn test_encrypt_age_key_name_nonexistent() {
+        // --age-key-name with a name that is NOT in the PXF file must
+        // fail cleanly with an error that mentions the missing name.
+        let pxf_path = TMP_DIR.path().join("age-key-name-missing.pxf");
+        std::fs::write(
+            &pxf_path,
+            r#"default = "primary"
+keys = {
+  primary: "AGE-SECRET-KEY-1G0Q5K9TV4REQ3ZSQRMTMG8NSWQGYT0T7TZ33RAZEE0GZYVZN0APSU24RK7"
+}
+"#,
+        )
+        .expect("write pxf");
+
+        let plain_path = prepare_temp_file(
+            "test_age_key_name_missing.yaml",
+            b"hello: world\n",
+        );
+
+        let output = Command::new(SOPS_BINARY_PATH)
+            .env("SOPS_AGE_KEY_FILE", &pxf_path)
+            .arg("encrypt")
+            .arg("--age-key-name")
+            .arg("ghost")
+            .arg(&plain_path)
+            .output()
+            .expect("Error running sops");
+        assert!(
+            !output.status.success(),
+            "sops encrypt --age-key-name ghost unexpectedly succeeded"
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("ghost"),
+            "stderr should mention the missing name 'ghost'; got: {}",
+            stderr
+        );
+    }
+
+    #[test]
+    fn test_decrypt_with_wrong_key_file_fails() {
+        // Encrypt with PXF A's named identity, then decrypt with PXF B
+        // (containing a completely different identity) as
+        // SOPS_AGE_KEY_FILE. Decrypt MUST fail rather than produce
+        // garbage — the MAC/no-decryptable-key path is the contract.
+        let pxf_encrypt = TMP_DIR.path().join("encrypt.pxf");
+        std::fs::write(
+            &pxf_encrypt,
+            r#"default = "primary"
+keys = {
+  primary: "AGE-SECRET-KEY-1G0Q5K9TV4REQ3ZSQRMTMG8NSWQGYT0T7TZ33RAZEE0GZYVZN0APSU24RK7"
+}
+"#,
+        )
+        .expect("write encrypt pxf");
+
+        // Different identity entirely.
+        let pxf_decrypt = TMP_DIR.path().join("decrypt.pxf");
+        std::fs::write(
+            &pxf_decrypt,
+            r#"default = "other"
+keys = {
+  other: "AGE-SECRET-KEY-1432K5YRNSC44GC4986NXMX6GVZ52WTMT9C79CLUVWYY4DKDHD5JSNDP4MC"
+}
+"#,
+        )
+        .expect("write decrypt pxf");
+
+        let plain_path = prepare_temp_file(
+            "test_wrong_key_file.yaml",
+            b"hello: world\nsecret: shh\n",
+        );
+
+        // Encrypt with PXF A.
+        let encrypt_out = Command::new(SOPS_BINARY_PATH)
+            .env("SOPS_AGE_KEY_FILE", &pxf_encrypt)
+            .arg("encrypt")
+            .arg(&plain_path)
+            .output()
+            .expect("Error running sops encrypt");
+        assert!(
+            encrypt_out.status.success(),
+            "sops encrypt failed: stderr={}",
+            String::from_utf8_lossy(&encrypt_out.stderr)
+        );
+
+        let enc_path = TMP_DIR.path().join("test_wrong_key_file.enc.yaml");
+        std::fs::write(&enc_path, &encrypt_out.stdout).expect("write encrypted file");
+
+        // Decrypt with PXF B — no shared key. Must fail.
+        let decrypt_out = Command::new(SOPS_BINARY_PATH)
+            .env("SOPS_AGE_KEY_FILE", &pxf_decrypt)
+            .arg("decrypt")
+            .arg(&enc_path)
+            .output()
+            .expect("Error running sops decrypt");
+        assert!(
+            !decrypt_out.status.success(),
+            "sops decrypt with wrong key file unexpectedly succeeded; stdout={}",
+            String::from_utf8_lossy(&decrypt_out.stdout)
+        );
+    }
 }
