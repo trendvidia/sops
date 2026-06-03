@@ -384,6 +384,32 @@ func TestLoadIdentities_PXFMalformedInSopsAgeKey(t *testing.T) {
 	}
 }
 
+func TestLoadIdentities_PXFMalformedInSopsAgeKeyCmd(t *testing.T) {
+	overwriteUserHomeDir(t, t.TempDir())
+	os.Unsetenv(SopsAgeKeyFileEnv)
+	os.Unsetenv(SopsAgeKeyEnv)
+	// Command stdout sniffs as PXF (starts with `default =`) but is
+	// malformed — must surface a PXF parse error mentioning the
+	// command env var, not silently fall through to the legacy parser.
+	t.Setenv(SopsAgeKeyCmdEnv, `printf 'default = \n'`)
+
+	key := &MasterKey{Recipient: mockRecipient}
+	_, _, errs := key.loadIdentities()
+	if len(errs) == 0 {
+		t.Fatal("expected loadIdentities to report a parse error for malformed PXF from SOPS_AGE_KEY_CMD")
+	}
+	found := false
+	for _, e := range errs {
+		if strings.Contains(e.Error(), "parse age key file") && strings.Contains(e.Error(), SopsAgeKeyCmdEnv) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected PXF parse error mentioning %s, got: %v", SopsAgeKeyCmdEnv, errs)
+	}
+}
+
 func TestDefaultRecipientFromKeyFile_FromSopsAgeKeyEnv(t *testing.T) {
 	os.Unsetenv(SopsAgeKeyFileEnv)
 	os.Unsetenv(SopsAgeKeyCmdEnv)
@@ -466,6 +492,36 @@ func TestRecipientFromKeyFileByName_FromSopsAgeKeyEnv(t *testing.T) {
 	}
 	if got != id.Recipient().String() {
 		t.Errorf("recipient: got %q, want %q", got, id.Recipient().String())
+	}
+}
+
+func TestRecipientFromKeyFileByName_FromSopsAgeKeyCmdEnv(t *testing.T) {
+	overwriteUserHomeDir(t, t.TempDir())
+	os.Unsetenv(SopsAgeKeyFileEnv)
+	os.Unsetenv(SopsAgeKeyEnv)
+
+	dir := t.TempDir()
+	pxfFile := filepath.Join(dir, "keys.pxf")
+	if err := os.WriteFile(pxfFile, pxfBytes(t, &keypb.AgeKeyFile{
+		Keys: map[string]string{
+			"primary":   mockIdentity,
+			"secondary": mockOtherIdentity,
+		},
+	}), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	t.Setenv(SopsAgeKeyCmdEnv, "cat "+pxfFile)
+
+	got, err := RecipientFromKeyFileByName("secondary")
+	if err != nil {
+		t.Fatalf("RecipientFromKeyFileByName: %v", err)
+	}
+	id, err := age.ParseX25519Identity(mockOtherIdentity)
+	if err != nil {
+		t.Fatalf("parse mockOtherIdentity: %v", err)
+	}
+	if got != id.Recipient().String() {
+		t.Errorf("recipient via SOPS_AGE_KEY_CMD: got %q, want %q", got, id.Recipient().String())
 	}
 }
 
