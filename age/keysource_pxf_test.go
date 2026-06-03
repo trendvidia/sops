@@ -495,6 +495,56 @@ func TestRecipientFromKeyFileByName_FromSopsAgeKeyEnv(t *testing.T) {
 	}
 }
 
+func TestRecipientFromKeyFileByName_NameNotInKeys_FromSopsAgeKeyEnv(t *testing.T) {
+	// Existing _NameNotInKeys covers the FILE source. Mirror it for
+	// the SOPS_AGE_KEY env source: missing name must surface a "not
+	// in keys" error that mentions the lookup name.
+	overwriteUserHomeDir(t, t.TempDir())
+	os.Unsetenv(SopsAgeKeyFileEnv)
+	os.Unsetenv(SopsAgeKeyCmdEnv)
+	t.Setenv(SopsAgeKeyEnv, string(pxfBytes(t, &keypb.AgeKeyFile{
+		Keys: map[string]string{"primary": mockIdentity},
+	})))
+
+	_, err := RecipientFromKeyFileByName("ghost")
+	if err == nil {
+		t.Fatal("RecipientFromKeyFileByName missing name in SOPS_AGE_KEY: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "ghost") {
+		t.Errorf("error should mention the missing name; got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "not in keys") {
+		t.Errorf("error should say %q; got: %v", "not in keys", err)
+	}
+}
+
+func TestRecipientFromKeyFileByName_NameNotInKeys_FromSopsAgeKeyCmdEnv(t *testing.T) {
+	// Same as above for the SOPS_AGE_KEY_CMD source.
+	overwriteUserHomeDir(t, t.TempDir())
+	os.Unsetenv(SopsAgeKeyFileEnv)
+	os.Unsetenv(SopsAgeKeyEnv)
+
+	dir := t.TempDir()
+	pxfFile := filepath.Join(dir, "keys.pxf")
+	if err := os.WriteFile(pxfFile, pxfBytes(t, &keypb.AgeKeyFile{
+		Keys: map[string]string{"primary": mockIdentity},
+	}), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	t.Setenv(SopsAgeKeyCmdEnv, "cat "+pxfFile)
+
+	_, err := RecipientFromKeyFileByName("ghost")
+	if err == nil {
+		t.Fatal("RecipientFromKeyFileByName missing name in SOPS_AGE_KEY_CMD: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "ghost") {
+		t.Errorf("error should mention the missing name; got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "not in keys") {
+		t.Errorf("error should say %q; got: %v", "not in keys", err)
+	}
+}
+
 func TestRecipientFromKeyFileByName_FromSopsAgeKeyCmdEnv(t *testing.T) {
 	overwriteUserHomeDir(t, t.TempDir())
 	os.Unsetenv(SopsAgeKeyFileEnv)
@@ -690,6 +740,164 @@ func TestDefaultRecipientFromKeyFile_HybridFromSopsAgeKeyCmdEnv(t *testing.T) {
 	}
 	if got != want {
 		t.Errorf("hybrid default via SOPS_AGE_KEY_CMD: got %q, want %q", got, want)
+	}
+}
+
+func TestDefaultRecipientFromKeyFile_MalformedFileSourceFailsLoud(t *testing.T) {
+	// A malformed higher-priority source must fail loud — the chain
+	// MUST NOT silently fall through to a lower-priority source.
+	// Misconfiguration debugging depends on the error surfacing
+	// instead of being masked by a valid SOPS_AGE_KEY.
+	overwriteUserHomeDir(t, t.TempDir())
+	os.Unsetenv(SopsAgeKeyCmdEnv)
+
+	// FILE: .pxf path with garbage content — keypb.ReadFile will fail.
+	dir := t.TempDir()
+	badFile := filepath.Join(dir, "broken.pxf")
+	if err := os.WriteFile(badFile, []byte("not pxf at all\n"), 0o600); err != nil {
+		t.Fatalf("write broken file: %v", err)
+	}
+	t.Setenv(SopsAgeKeyFileEnv, badFile)
+
+	// KEY env: valid PXF with a default that WOULD resolve if the
+	// chain silently fell through to it.
+	t.Setenv(SopsAgeKeyEnv, string(pxfBytes(t, &keypb.AgeKeyFile{
+		Default: "fallback",
+		Keys:    map[string]string{"fallback": mockIdentity},
+	})))
+
+	_, err := DefaultRecipientFromKeyFile()
+	if err == nil {
+		t.Fatal("expected DefaultRecipientFromKeyFile to fail loud on malformed FILE source, got nil")
+	}
+	if !strings.Contains(err.Error(), "parse age key file") {
+		t.Errorf("error should mention parse failure on the FILE source; got: %v", err)
+	}
+}
+
+func TestRecipientFromKeyFileByName_MalformedFileSourceFailsLoud(t *testing.T) {
+	// Same loud-failure contract for the named-lookup entry point.
+	overwriteUserHomeDir(t, t.TempDir())
+	os.Unsetenv(SopsAgeKeyCmdEnv)
+
+	dir := t.TempDir()
+	badFile := filepath.Join(dir, "broken.pxf")
+	if err := os.WriteFile(badFile, []byte("not pxf at all\n"), 0o600); err != nil {
+		t.Fatalf("write broken file: %v", err)
+	}
+	t.Setenv(SopsAgeKeyFileEnv, badFile)
+
+	// KEY env: valid PXF containing the requested name — must NOT be
+	// reached because the FILE source's parse error preempts the walk.
+	t.Setenv(SopsAgeKeyEnv, string(pxfBytes(t, &keypb.AgeKeyFile{
+		Keys: map[string]string{"target": mockIdentity},
+	})))
+
+	_, err := RecipientFromKeyFileByName("target")
+	if err == nil {
+		t.Fatal("expected RecipientFromKeyFileByName to fail loud on malformed FILE source, got nil")
+	}
+	if !strings.Contains(err.Error(), "parse age key file") {
+		t.Errorf("error should mention parse failure on the FILE source; got: %v", err)
+	}
+}
+
+func TestDefaultRecipientFromKeyFile_CmdExitNonZero(t *testing.T) {
+	// Encrypt-side chain only reaches the cmd source after FILE/KEY
+	// fall through. When the cmd exits non-zero, the chain must error
+	// loud (not swallow and fall through to default-path), so
+	// misconfiguration surfaces immediately.
+	overwriteUserHomeDir(t, t.TempDir())
+	os.Unsetenv(SopsAgeKeyFileEnv)
+	os.Unsetenv(SopsAgeKeyEnv)
+	t.Setenv(SopsAgeKeyCmdEnv, "false")
+
+	_, err := DefaultRecipientFromKeyFile()
+	if err == nil {
+		t.Fatal("expected DefaultRecipientFromKeyFile to error on cmd non-zero exit, got nil")
+	}
+	if !strings.Contains(err.Error(), "failed to execute command") {
+		t.Errorf("error should mention command execution failure; got: %v", err)
+	}
+}
+
+func TestDefaultRecipientFromKeyFile_CmdSpawnFails(t *testing.T) {
+	// Spawn-time failure (command binary doesn't exist) must surface
+	// as an error from the chain.
+	overwriteUserHomeDir(t, t.TempDir())
+	os.Unsetenv(SopsAgeKeyFileEnv)
+	os.Unsetenv(SopsAgeKeyEnv)
+	t.Setenv(SopsAgeKeyCmdEnv, "/nonexistent/sops-test-cmd-that-does-not-exist")
+
+	_, err := DefaultRecipientFromKeyFile()
+	if err == nil {
+		t.Fatal("expected DefaultRecipientFromKeyFile to error on cmd spawn failure, got nil")
+	}
+	if !strings.Contains(err.Error(), "failed to execute command") {
+		t.Errorf("error should mention command execution failure; got: %v", err)
+	}
+}
+
+func TestDefaultRecipientFromKeyFile_CmdEmptyStdout(t *testing.T) {
+	// Empty stdout doesn't sniff as PXF, so the source must fall
+	// through cleanly to the default-path source. No error; if no
+	// default-path file exists, returns "" with nil error per the
+	// documented contract.
+	tmp := t.TempDir()
+	overwriteUserHomeDir(t, tmp)
+	os.Unsetenv(SopsAgeKeyFileEnv)
+	os.Unsetenv(SopsAgeKeyEnv)
+	t.Setenv(SopsAgeKeyCmdEnv, "true")
+
+	got, err := DefaultRecipientFromKeyFile()
+	if err != nil {
+		t.Fatalf("DefaultRecipientFromKeyFile with empty cmd stdout: want nil err, got %v", err)
+	}
+	if got != "" {
+		t.Errorf("recipient: got %q, want %q (empty stdout should not resolve)", got, "")
+	}
+}
+
+func TestDefaultRecipientFromKeyFile_CmdShlexFails(t *testing.T) {
+	// Unbalanced quotes break shlex.Split before the command even runs;
+	// the wrapped error mentions "failed to parse command".
+	overwriteUserHomeDir(t, t.TempDir())
+	os.Unsetenv(SopsAgeKeyFileEnv)
+	os.Unsetenv(SopsAgeKeyEnv)
+	t.Setenv(SopsAgeKeyCmdEnv, `echo "unclosed`)
+
+	_, err := DefaultRecipientFromKeyFile()
+	if err == nil {
+		t.Fatal("expected DefaultRecipientFromKeyFile to error on shlex failure, got nil")
+	}
+	if !strings.Contains(err.Error(), "failed to parse command") {
+		t.Errorf("error should mention command parse failure; got: %v", err)
+	}
+}
+
+func TestLoadIdentities_CmdExitNonZero(t *testing.T) {
+	// Decrypt-side: cmd non-zero exit must land in errs rather than
+	// be silently swallowed. Other sources still get a chance to
+	// resolve, but this source's failure is reported.
+	overwriteUserHomeDir(t, t.TempDir())
+	os.Unsetenv(SopsAgeKeyFileEnv)
+	os.Unsetenv(SopsAgeKeyEnv)
+	t.Setenv(SopsAgeKeyCmdEnv, "false")
+
+	key := &MasterKey{Recipient: mockRecipient}
+	_, _, errs := key.loadIdentities()
+	if len(errs) == 0 {
+		t.Fatal("expected loadIdentities to report cmd execution failure, got no errs")
+	}
+	found := false
+	for _, e := range errs {
+		if strings.Contains(e.Error(), "failed to execute command") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected an error mentioning cmd execution failure; got: %v", errs)
 	}
 }
 

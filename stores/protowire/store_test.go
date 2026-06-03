@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/trendvidia/sops/v4"
 	"github.com/trendvidia/sops/v4/age"
 	"github.com/trendvidia/sops/v4/config"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func newStore() *Store {
@@ -292,6 +292,59 @@ func TestEmitPlainFileRejectsMultipleBranches(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "single document")
+}
+
+func TestLoadEncryptedFileCorruptMetadata(t *testing.T) {
+	// Decrypt-side malformed-metadata cases. Each input parses as valid
+	// PXF (LoadPlainFile succeeds) but the embedded `sops` metadata is
+	// shaped wrong for ExtractMetadata. Must surface a clean error
+	// rather than crash or return partial metadata.
+	cases := []struct {
+		name      string
+		in        string
+		wantInErr string
+	}{
+		{
+			name:      "sops is a string, not a block",
+			in:        `sops = "oops"`,
+			wantInErr: "not a mapping",
+		},
+		{
+			name: "duplicate sops blocks at top level",
+			in: `sops {
+  version = "3.16.0"
+}
+sops {
+  version = "3.16.1"
+}
+`,
+			wantInErr: "duplicate",
+		},
+		{
+			name: "bad lastmodified timestamp",
+			in: `sops {
+  lastmodified = "not-a-timestamp"
+  version = "3.16.0"
+}
+`,
+			// The Go time package surfaces "parsing time ... cannot parse";
+			// the field name isn't included in the wrapped error today —
+			// the assertion pins what's actually emitted, not what would
+			// be nicer.
+			wantInErr: "parsing time",
+		},
+	}
+	store := newStore()
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := store.LoadEncryptedFile([]byte(tc.in))
+			require.Error(t, err, "expected LoadEncryptedFile to error for %q", tc.in)
+			// Case-insensitive match because error wording varies across
+			// extraction stages ("Found sops entry...", "lastmodified:", etc).
+			assert.Contains(t, strings.ToLower(err.Error()), strings.ToLower(tc.wantInErr),
+				"error should mention %q; got: %v", tc.wantInErr, err)
+		})
+	}
 }
 
 func TestRoundTripNestedMapEntryKeys(t *testing.T) {
