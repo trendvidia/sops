@@ -253,3 +253,70 @@ func TestLoadEncryptedFileNoMetadata(t *testing.T) {
 	_, err := store.LoadEncryptedFile([]byte(`hello = "world"`))
 	assert.Equal(t, sops.MetadataNotFound, err)
 }
+
+func TestLoadPlainFileMalformed(t *testing.T) {
+	// Confirm malformed inputs surface a wrapped parse error from the
+	// store rather than crashing or returning a partial branch. Cases
+	// are chosen to exercise the store's error wrapping; each must
+	// produce a non-nil error mentioning "unmarshal" (the store's
+	// wrapper prefix).
+	cases := []struct {
+		name string
+		in   string
+	}{
+		{name: "unterminated block", in: `keys {`},
+		{name: "unterminated string", in: `key = "no closing quote`},
+		{name: "unterminated list", in: `xs = [1, 2,`},
+		{name: "garbage bytes", in: "\x00\x01\x02 not pxf"},
+		{name: "stray closing brace", in: `}`},
+		{name: "key with no value", in: `key =`},
+		{name: "missing equals", in: `key "value"`},
+	}
+	store := newStore()
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := store.LoadPlainFile([]byte(tc.in))
+			require.Error(t, err, "expected parse error for %q", tc.in)
+			assert.Contains(t, err.Error(), "unmarshal", "error should be wrapped by the store: %v", err)
+		})
+	}
+}
+
+func TestEmitPlainFileRejectsMultipleBranches(t *testing.T) {
+	// PXF stores a single document per file; multi-branch input must
+	// be rejected at emit time rather than producing concatenated PXF.
+	store := newStore()
+	_, err := store.EmitPlainFile(sops.TreeBranches{
+		{{Key: "a", Value: 1}},
+		{{Key: "b", Value: 2}},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "single document")
+}
+
+func TestRoundTripNestedMapEntryKeys(t *testing.T) {
+	// Nested map-entry keys with non-identifier strings (quoted keys
+	// inside a block) must round-trip without being mangled. Sibling
+	// stores (yaml/json) accept arbitrary string keys; protowire's
+	// stricter top-level identifier rule applies only at the root.
+	branch := sops.TreeBranch{
+		{
+			Key: "envs",
+			Value: sops.TreeBranch{
+				{Key: "production-eu", Value: "ENC[AES256_GCM,data:p,iv:i,tag:t,type:str]"},
+				{Key: "staging.us-east-1", Value: "ENC[AES256_GCM,data:s,iv:i,tag:t,type:str]"},
+			},
+		},
+	}
+	store := newStore()
+	out, err := store.EmitPlainFile(sops.TreeBranches{branch})
+	require.NoError(t, err)
+
+	branches, err := store.LoadPlainFile(out)
+	require.NoError(t, err)
+	require.Len(t, branches, 1)
+	envs, ok := lookup(branches[0], "envs").(sops.TreeBranch)
+	require.True(t, ok, "envs must be a TreeBranch")
+	assert.Equal(t, "ENC[AES256_GCM,data:p,iv:i,tag:t,type:str]", lookup(envs, "production-eu"))
+	assert.Equal(t, "ENC[AES256_GCM,data:s,iv:i,tag:t,type:str]", lookup(envs, "staging.us-east-1"))
+}
