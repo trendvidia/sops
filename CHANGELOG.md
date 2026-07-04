@@ -1,5 +1,22 @@
 # Changelog
 
+## 4.0.2
+
+Patch release with a single crash fix.
+
+* **A set-but-empty `SOPS_AGE_KEY_CMD` no longer panics.** A
+  cleared-but-still-exported key command (`export SOPS_AGE_KEY_CMD=`)
+  passed the `os.LookupEnv` gate, `shlex.Split` produced an empty
+  argv, and `getOutputFromCmd` crashed on `args[0]` with an
+  index-out-of-range — taking down the CLI and any embedder linking
+  the library (found wiring goed's in-process crypto). The empty or
+  whitespace-only command now surfaces as a normal per-source error
+  (`failed to parse command "": empty command`), so other key sources
+  (`SOPS_AGE_KEY`, `SOPS_AGE_KEY_FILE`, the default key file) still
+  get their turn. Covers the decrypt-side age key command, the SSH
+  key command, and encrypt-side recipient resolution. Issue #38,
+  PR #39.
+
 ## 4.0.1
 
 Patch release on top of the never-tagged 4.0.0 (module path bump
