@@ -575,6 +575,47 @@ func TestMasterKey_loadIdentities(t *testing.T) {
 		assert.Nil(t, got)
 		assert.Len(t, unusedLocations, 7)
 	})
+
+	// A cleared-but-still-exported SOPS_AGE_KEY_CMD (`export
+	// SOPS_AGE_KEY_CMD=`) used to panic with an index-out-of-range in
+	// getOutputFromCmd; it must surface as a normal per-source error
+	// so other key sources still get their turn (#38).
+	for name, cmd := range map[string]string{
+		"empty cmd":           "",
+		"whitespace-only cmd": "   ",
+	} {
+		t.Run(name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			// Overwrite to ensure local config is not picked up by tests
+			overwriteUserHomeDir(t, tmpDir)
+
+			t.Setenv(SopsAgeKeyCmdEnv, cmd)
+
+			key := &MasterKey{}
+			got, unusedLocations, errs := key.loadIdentities()
+			assert.Len(t, errs, 1)
+			assert.Error(t, errs[0])
+			assert.ErrorContains(t, errs[0], "empty command")
+			assert.Nil(t, got)
+			assert.Len(t, unusedLocations, 7)
+		})
+	}
+
+	t.Run("empty cmd does not block other sources", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		// Overwrite to ensure local config is not picked up by tests
+		overwriteUserHomeDir(t, tmpDir)
+
+		t.Setenv(SopsAgeKeyCmdEnv, "")
+		t.Setenv(SopsAgeKeyEnv, mockIdentity)
+
+		key := &MasterKey{}
+		got, unusedLocations, errs := key.loadIdentities()
+		assert.Len(t, errs, 1)
+		assert.ErrorContains(t, errs[0], "empty command")
+		assert.Len(t, got, 1)
+		assert.Len(t, unusedLocations, 5)
+	})
 }
 
 // overwriteUserHomeDir points os.UserHomeDir() at path on every

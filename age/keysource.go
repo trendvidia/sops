@@ -336,6 +336,13 @@ func getOutputFromCmd(cmdString string, envVars []string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse command %s: %w", cmdString, err)
 	}
+	// A set-but-empty (or whitespace-only) command splits to no argv;
+	// surface it as a per-source error instead of panicking on args[0].
+	// A cleared-but-still-exported SOPS_AGE_KEY_CMD is the common way
+	// in (#38).
+	if len(args) == 0 {
+		return nil, fmt.Errorf("failed to parse command %q: empty command", cmdString)
+	}
 	cmd := exec.Command(args[0], args[1:]...)
 	if envVars != nil {
 		cmd.Env = append(os.Environ(), envVars[0:]...)
