@@ -78,7 +78,7 @@ func parseSSHIdentityFromPrivateKeyFile(keyPath string) (age.Identity, error) {
 		return i, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("malformed SSH identity in %q: %w", keyPath, err)
+		return nil, withSentinel(ErrKeyFileParse, fmt.Errorf("malformed SSH identity in %q: %w", keyPath, err))
 	}
 	return id, nil
 }

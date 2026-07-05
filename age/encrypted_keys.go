@@ -182,7 +182,7 @@ func unwrapIdentities(location string, reader io.Reader, allowMultipleKeysPerLin
 	default:
 		ids, err := parseIdentities(b, allowMultipleKeysPerLine)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse '%s' age identities: %w", location, err)
+			return nil, withSentinel(ErrKeyFileParse, fmt.Errorf("failed to parse '%s' age identities: %w", location, err))
 		}
 		return ids, nil
 	}

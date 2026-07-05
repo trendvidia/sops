@@ -3,7 +3,9 @@ package sops
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -11,6 +13,7 @@ import (
 
 	"github.com/trendvidia/sops/v4/age"
 	"github.com/trendvidia/sops/v4/hcvault"
+	"github.com/trendvidia/sops/v4/keyservice"
 	"github.com/trendvidia/sops/v4/pgp"
 )
 
@@ -1808,4 +1811,64 @@ func TestDirectiveMACOnlyEncrypted(t *testing.T) {
 	macDec, err := enc.Decrypt(key, cipher)
 	assert.NoError(t, err)
 	assert.Equal(t, macEnc, macDec, "MAC stable across encrypt/decrypt under MACOnlyEncrypted")
+}
+
+// TestGetDataKey_AgeTypedErrorsSurviveAggregation proves the age
+// package's typed key-source errors (age/errors.go, #41) stay
+// reachable with errors.Is / errors.As from the aggregated error
+// GetDataKeyWithKeyServices returns — i.e. they survive
+// getDataKeyError -> decryptKeyErrors -> decryptKeyError -> the
+// in-process local keyservice -> the age keysource.
+func TestGetDataKey_AgeTypedErrorsSurviveAggregation(t *testing.T) {
+	// A mock age recipient/encrypted data key pair borrowed from the
+	// age package's tests. No matching identity is configured below,
+	// so decryption must fail with classifiable key-source errors.
+	const mockAgeRecipient = "age1lzd99uklcjnc0e7d860axevet2cz99ce9pq6tzuzd05l5nr28ams36nvun"
+	const mockAgeEncryptedKey = `-----BEGIN AGE ENCRYPTED FILE-----
+YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBvY2t2NkdLUGRvY3l2OGNy
+MVJWcUhCOEZrUG8yeCtnRnhxL0I5NFk4YjJFCmE4SVQ3MEdyZkFqRWpSa2F0NVhF
+VDUybzBxdS9nSGpHSVRVMUI0UEVqZkkKLS0tIGJjeGhNQ0Y5L2VZRVVYSm90djFF
+bzdnQ3UwTGljMmtrbWNMV1MxYkFzUFUK4xjOZOTGdcbzuwUY/zeBXhcF+Md3e5PQ
+EylloI7MNGbadPGb
+-----END AGE ENCRYPTED FILE-----`
+
+	// Isolate from the developer's real age configuration: scratch
+	// $HOME (hides the default key file and ~/.ssh keys), no SopsAge*
+	// env vars except the deliberately empty key command.
+	switch runtime.GOOS {
+	case "windows":
+		t.Setenv("USERPROFILE", t.TempDir())
+	case "plan9":
+		t.Setenv("home", t.TempDir())
+	default:
+		t.Setenv("HOME", t.TempDir())
+	}
+	for _, v := range []string{
+		age.SopsAgeKeyEnv, age.SopsAgeKeyFileEnv, age.SopsAgeKeyCmdEnv,
+		age.SopsAgeSshPrivateKeyCmdEnv, age.SopsAgeSshPrivateKeyFileEnv,
+	} {
+		t.Setenv(v, "") // register cleanup restore
+		os.Unsetenv(v)
+	}
+	// The goed#31 scenario: a cleared-but-still-exported key command.
+	t.Setenv(age.SopsAgeKeyCmdEnv, "")
+
+	masterKey := &age.MasterKey{Recipient: mockAgeRecipient}
+	masterKey.EncryptedKey = mockAgeEncryptedKey
+	m := Metadata{KeyGroups: []KeyGroup{{masterKey}}}
+
+	dataKey, err := m.GetDataKeyWithKeyServices(
+		[]keyservice.KeyServiceClient{keyservice.NewLocalClient()}, nil)
+	assert.Nil(t, dataKey)
+	assert.Error(t, err)
+
+	// The classification the error text used to be string-matched for:
+	// "no key material configured", not "the key command is broken".
+	assert.ErrorIs(t, err, age.ErrNoIdentities)
+	assert.ErrorIs(t, err, age.ErrEmptyKeyCommand)
+	assert.NotErrorIs(t, err, age.ErrKeyCommandFailed)
+
+	var srcErr *age.KeySourceError
+	assert.ErrorAs(t, err, &srcErr)
+	assert.Equal(t, age.SopsAgeKeyCmdEnv, srcErr.Source)
 }
