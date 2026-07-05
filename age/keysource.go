@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -113,6 +114,12 @@ func (e errSet) Error() string {
 		str[i] = err.Error()
 	}
 	return strings.Join(str, "; ")
+}
+
+// Unwrap exposes the captured errors so [errors.Is] / [errors.As] can
+// traverse them.
+func (e errSet) Unwrap() []error {
+	return []error(e)
 }
 
 // MasterKeyFromRecipient takes a Bech32-encoded age public key, parses it, and
@@ -231,7 +238,12 @@ func (key *MasterKey) SetEncryptedDataKey(enc []byte) {
 	key.EncryptedKey = string(enc)
 }
 
-func formatError(msg string, err error, errs errSet, unusedLocations []string) error {
+// formatError builds the aggregate identity-loading failure. The
+// rendered message flattens err and errs exactly like it always has;
+// the returned error additionally exposes err, every errs member, and
+// any classification sentinels to [errors.Is] / [errors.As] via
+// Unwrap() []error. Sentinels never appear in the message.
+func formatError(msg string, err error, errs errSet, unusedLocations []string, sentinels ...error) error {
 	var loadSuffix string
 	if len(errs) > 0 {
 		loadSuffix = fmt.Sprintf(". Errors while loading age identities: %s", errs.Error())
@@ -248,11 +260,19 @@ func formatError(msg string, err error, errs errSet, unusedLocations []string) e
 		}
 		unusedSuffix = fmt.Sprintf(". Did not find keys in location%s.", unusedSuffix)
 	}
+	var text string
 	if err != nil {
-		return fmt.Errorf("%s: %w%s%s", msg, err, loadSuffix, unusedSuffix)
+		text = fmt.Sprintf("%s: %s%s%s", msg, err, loadSuffix, unusedSuffix)
 	} else {
-		return fmt.Errorf("%s%s%s", msg, loadSuffix, unusedSuffix)
+		text = fmt.Sprintf("%s%s%s", msg, loadSuffix, unusedSuffix)
 	}
+	wrapped := make([]error, 0, len(sentinels)+1+len(errs))
+	wrapped = append(wrapped, sentinels...)
+	if err != nil {
+		wrapped = append(wrapped, err)
+	}
+	wrapped = append(wrapped, errs...)
+	return &loadIdentitiesError{msg: text, errs: wrapped}
 }
 
 // Decrypt decrypts the EncryptedKey with the parsed or loaded identities, and
@@ -280,7 +300,7 @@ func (key *MasterKey) decryptInternal() ([]byte, error) {
 		ids, unusedLocations, errs = key.loadIdentities()
 		if len(ids) == 0 {
 			log.Info("Decryption failed")
-			return nil, formatError("failed to load age identities", nil, errs, unusedLocations)
+			return nil, formatError("failed to load age identities", nil, errs, unusedLocations, ErrNoIdentities)
 		}
 		ids.ApplyToMasterKey(key)
 	}
@@ -290,7 +310,11 @@ func (key *MasterKey) decryptInternal() ([]byte, error) {
 	r, err := age.Decrypt(ar, key.parsedIdentities...)
 	if err != nil {
 		log.Info("Decryption failed")
-		return nil, formatError("failed to create reader for decrypting sops data key with age", err, errs, unusedLocations)
+		var sentinels []error
+		if noMatch := new(age.NoIdentityMatchError); errors.As(err, &noMatch) {
+			sentinels = append(sentinels, ErrNoIdentityMatched)
+		}
+		return nil, formatError("failed to create reader for decrypting sops data key with age", err, errs, unusedLocations, sentinels...)
 	}
 
 	var b bytes.Buffer
@@ -334,14 +358,16 @@ func getOutputFromCmd(cmdString string, envVars []string) ([]byte, error) {
 
 	args, err := shlex.Split(cmdString)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse command %s: %w", cmdString, err)
+		return nil, fmt.Errorf("failed to parse command %s: %w", cmdString, withSentinel(ErrKeyCommandFailed, err))
 	}
 	// A set-but-empty (or whitespace-only) command splits to no argv;
 	// surface it as a per-source error instead of panicking on args[0].
 	// A cleared-but-still-exported SOPS_AGE_KEY_CMD is the common way
-	// in (#38).
+	// in (#38). Deliberately ErrEmptyKeyCommand and not
+	// ErrKeyCommandFailed: this means "no key material configured",
+	// not "the configured command is broken" (#41).
 	if len(args) == 0 {
-		return nil, fmt.Errorf("failed to parse command %q: empty command", cmdString)
+		return nil, fmt.Errorf("failed to parse command %q: %w", cmdString, ErrEmptyKeyCommand)
 	}
 	cmd := exec.Command(args[0], args[1:]...)
 	if envVars != nil {
@@ -349,7 +375,7 @@ func getOutputFromCmd(cmdString string, envVars []string) ([]byte, error) {
 	}
 	out, err = cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute command %s: %w", cmdString, err)
+		return nil, fmt.Errorf("failed to execute command %s: %w", cmdString, withSentinel(ErrKeyCommandFailed, err))
 	}
 
 	return out, nil
@@ -370,7 +396,7 @@ func (key *MasterKey) loadAgeSSHIdentities() ([]age.Identity, []string, errSet) 
 	if ok {
 		identity, err := parseSSHIdentityFromPrivateKeyFile(sshKeyFilePath)
 		if err != nil {
-			errs = append(errs, err)
+			errs = append(errs, &KeySourceError{Source: SopsAgeSshPrivateKeyFileEnv, Err: err})
 		} else {
 			identities = append(identities, identity)
 		}
@@ -382,11 +408,11 @@ func (key *MasterKey) loadAgeSSHIdentities() ([]age.Identity, []string, errSet) 
 	if ok {
 		out, err := getOutputFromCmd(sshKeyCmd, []string{fmt.Sprintf("%s=%s", SopsAgeRecipientEnv, key.Recipient)})
 		if err != nil {
-			errs = append(errs, err)
+			errs = append(errs, &KeySourceError{Source: SopsAgeSshPrivateKeyCmdEnv, Err: err})
 		} else {
 			identity, err := parseSSHIdentityFromPrivateKeyCmdOutput(out)
 			if err != nil {
-				errs = append(errs, err)
+				errs = append(errs, &KeySourceError{Source: SopsAgeSshPrivateKeyCmdEnv, Err: err})
 			} else {
 				identities = append(identities, identity)
 			}
@@ -405,7 +431,7 @@ func (key *MasterKey) loadAgeSSHIdentities() ([]age.Identity, []string, errSet) 
 		if _, err := os.Stat(sshEd25519PrivateKeyPath); err == nil {
 			identity, err := parseSSHIdentityFromPrivateKeyFile(sshEd25519PrivateKeyPath)
 			if err != nil {
-				errs = append(errs, err)
+				errs = append(errs, &KeySourceError{Source: sshEd25519PrivateKeyPath, Err: err})
 			} else {
 				identities = append(identities, identity)
 			}
@@ -417,7 +443,7 @@ func (key *MasterKey) loadAgeSSHIdentities() ([]age.Identity, []string, errSet) 
 		if _, err := os.Stat(sshRsaPrivateKeyPath); err == nil {
 			identity, err := parseSSHIdentityFromPrivateKeyFile(sshRsaPrivateKeyPath)
 			if err != nil {
-				errs = append(errs, err)
+				errs = append(errs, &KeySourceError{Source: sshRsaPrivateKeyPath, Err: err})
 			} else {
 				identities = append(identities, identity)
 			}
@@ -476,7 +502,7 @@ func (key *MasterKey) loadIdentities() (ParsedIdentities, []string, errSet) {
 		if strings.HasSuffix(ageKeyFile, keypb.FileExtension) {
 			ids, err := loadPXFIdentities(ageKeyFile)
 			if err != nil {
-				errs = append(errs, err)
+				errs = append(errs, &KeySourceError{Source: SopsAgeKeyFileEnv, Err: err})
 			} else {
 				identities = append(identities, ids...)
 				if len(ids) == 0 {
@@ -486,7 +512,7 @@ func (key *MasterKey) loadIdentities() (ParsedIdentities, []string, errSet) {
 		} else {
 			f, err := os.Open(ageKeyFile)
 			if err != nil {
-				errs = append(errs, fmt.Errorf("failed to open %s file: %w", SopsAgeKeyFileEnv, err))
+				errs = append(errs, &KeySourceError{Source: SopsAgeKeyFileEnv, Err: fmt.Errorf("failed to open %s file: %w", SopsAgeKeyFileEnv, err)})
 			} else {
 				defer f.Close()
 				readers[SopsAgeKeyFileEnv] = identityReader{
@@ -504,7 +530,7 @@ func (key *MasterKey) loadIdentities() (ParsedIdentities, []string, errSet) {
 		if isPXFContent(data) {
 			ids, err := parsePXFIdentities(SopsAgeKeyEnv, data)
 			if err != nil {
-				errs = append(errs, err)
+				errs = append(errs, &KeySourceError{Source: SopsAgeKeyEnv, Err: err})
 			} else {
 				identities = append(identities, ids...)
 				if len(ids) == 0 {
@@ -524,11 +550,11 @@ func (key *MasterKey) loadIdentities() (ParsedIdentities, []string, errSet) {
 	if ageKeyCmd, ok := os.LookupEnv(SopsAgeKeyCmdEnv); ok {
 		out, err := getOutputFromCmd(ageKeyCmd, []string{fmt.Sprintf("%s=%s", SopsAgeRecipientEnv, key.Recipient)})
 		if err != nil {
-			errs = append(errs, err)
+			errs = append(errs, &KeySourceError{Source: SopsAgeKeyCmdEnv, Err: err})
 		} else if isPXFContent(out) {
 			ids, err := parsePXFIdentities(SopsAgeKeyCmdEnv, out)
 			if err != nil {
-				errs = append(errs, err)
+				errs = append(errs, &KeySourceError{Source: SopsAgeKeyCmdEnv, Err: err})
 			} else {
 				identities = append(identities, ids...)
 				if len(ids) == 0 {
@@ -555,7 +581,7 @@ func (key *MasterKey) loadIdentities() (ParsedIdentities, []string, errSet) {
 		if _, statErr := os.Stat(defaultPath); statErr == nil {
 			ids, err := loadPXFIdentities(defaultPath)
 			if err != nil {
-				errs = append(errs, err)
+				errs = append(errs, &KeySourceError{Source: defaultPath, Err: err})
 			} else {
 				identities = append(identities, ids...)
 				if len(ids) == 0 {
@@ -570,7 +596,7 @@ func (key *MasterKey) loadIdentities() (ParsedIdentities, []string, errSet) {
 	for location, r := range readers {
 		ids, err := unwrapIdentities(location, r.reader, r.allowMultipleKeysPerLine)
 		if err != nil {
-			errs = append(errs, err)
+			errs = append(errs, &KeySourceError{Source: location, Err: err})
 		} else {
 			identities = append(identities, ids...)
 			if len(ids) == 0 {
@@ -730,13 +756,13 @@ func looksLikePXFTopLevelEntry(line string) bool {
 func parsePXFIdentities(source string, data []byte) (ParsedIdentities, error) {
 	f, err := keypb.Parse(source, data)
 	if err != nil {
-		return nil, err
+		return nil, withSentinel(ErrKeyFileParse, err)
 	}
 	var ids ParsedIdentities
 	for name, secret := range f.Keys {
 		id, err := parseIdentity(secret)
 		if err != nil {
-			return nil, fmt.Errorf("age key file %q: parsing key %q: %w", source, name, err)
+			return nil, withSentinel(ErrKeyFileParse, fmt.Errorf("age key file %q: parsing key %q: %w", source, name, err))
 		}
 		ids = append(ids, id)
 	}
@@ -920,7 +946,7 @@ func parseSSHIdentityFromPrivateKeyCmdOutput(key []byte) (age.Identity, error) {
 		return nil, fmt.Errorf("the SSH key returned by running SOPS_AGE_SSH_PRIVATE_KEY_CMD is password protected, which is unsupported. (%q)", sshErr)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("malformed SSH identity returned by running SOPS_AGE_SSH_PRIVATE_KEY_CMD: %q", err)
+		return nil, withSentinel(ErrKeyFileParse, fmt.Errorf("malformed SSH identity returned by running SOPS_AGE_SSH_PRIVATE_KEY_CMD: %q", err))
 	}
 	return id, nil
 }
