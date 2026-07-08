@@ -1,0 +1,128 @@
+syntax = "proto3";
+
+// The sops.config package holds the PXF-formatted on-disk schema for the
+// sops configuration file (historically ".sops.yaml", now ".sops.pxf").
+//
+// A dedicated proto package is required: keyservice.proto declares
+// messages such as KmsKey and GcpKmsKey in the empty package, so these
+// config messages must be namespaced to avoid clashing in the global
+// protobuf registry.
+package sops.config;
+
+option go_package = "./configpb";
+
+// ConfigFile is the top-level schema of a .sops.pxf configuration file.
+// It mirrors the historical .sops.yaml layout: creation rules select the
+// keys used to encrypt new files, destination rules drive `sops publish`,
+// and stores tweaks per-format (de)serialization.
+message ConfigFile {
+  repeated CreationRule creation_rules = 1;
+  repeated DestinationRule destination_rules = 2;
+  StoresConfig stores = 3;
+}
+
+// CreationRule matches a file path (via path_regex) and describes which
+// master keys encrypt it. The key fields (kms, age, pgp, ...) are plain
+// repeated strings; the historical YAML "scalar or list" shorthand and
+// comma-separated form collapse to a list in PXF.
+message CreationRule {
+  string path_regex = 1;
+  repeated string kms = 2;
+  string aws_profile = 3;
+  repeated string age = 4;
+  repeated string pgp = 5;
+  repeated string gcp_kms = 6;
+  repeated string hckms = 7;
+  repeated string azure_keyvault = 8;
+  repeated string hc_vault_transit_uri = 9;
+  repeated KeyGroup key_groups = 10;
+  int32 shamir_threshold = 11;
+  string unencrypted_suffix = 12;
+  string encrypted_suffix = 13;
+  string unencrypted_regex = 14;
+  string encrypted_regex = 15;
+  string unencrypted_comment_regex = 16;
+  string encrypted_comment_regex = 17;
+  bool mac_only_encrypted = 18;
+}
+
+// KeyGroup is a set of master keys that jointly reconstruct one Shamir
+// share. `merge` allows composing groups from anchors/aliases.
+message KeyGroup {
+  repeated KeyGroup merge = 1;
+  repeated KmsKey kms = 2;
+  repeated GcpKmsKey gcp_kms = 3;
+  repeated HcKmsKey hckms = 4;
+  repeated AzureKvKey azure_keyvault = 5;
+  repeated string hc_vault = 6;
+  repeated string age = 7;
+  repeated string pgp = 8;
+}
+
+message KmsKey {
+  string arn = 1;
+  string role = 2;
+  map<string, string> context = 3;
+  string aws_profile = 4;
+}
+
+message GcpKmsKey {
+  string resource_id = 1;
+}
+
+message AzureKvKey {
+  string vault_url = 1;
+  string key = 2;
+  string version = 3;
+}
+
+message HcKmsKey {
+  string key_id = 1;
+}
+
+// DestinationRule configures `sops publish` targets. The embedded
+// recreation_rule reuses CreationRule to describe the keys used when the
+// file is re-encrypted at its destination.
+message DestinationRule {
+  string path_regex = 1;
+  string s3_bucket = 2;
+  string s3_prefix = 3;
+  string gcs_bucket = 4;
+  string gcs_prefix = 5;
+  string vault_path = 6;
+  string vault_address = 7;
+  string vault_kv_mount_name = 8;
+  int32 vault_kv_version = 9;
+  CreationRule recreation_rule = 10;
+  bool omit_extensions = 11;
+}
+
+// StoresConfig holds per-format store options. The indent fields use
+// proto3 optional so that "unset" is distinguishable from an explicit 0:
+// sops defaults JSON/JSON-binary indent to -1 (compact) when unset.
+message StoresConfig {
+  DotenvStoreConfig dotenv = 1;
+  IniStoreConfig ini = 2;
+  JsonBinaryStoreConfig json_binary = 3;
+  JsonStoreConfig json = 4;
+  YamlStoreConfig yaml = 5;
+  ProtowireStoreConfig protowire = 6;
+}
+
+message DotenvStoreConfig {}
+
+message IniStoreConfig {}
+
+message JsonStoreConfig {
+  optional int32 indent = 1;
+}
+
+message JsonBinaryStoreConfig {
+  optional int32 indent = 1;
+}
+
+message YamlStoreConfig {
+  optional int32 indent = 1;
+}
+
+message ProtowireStoreConfig {}

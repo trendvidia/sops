@@ -19,7 +19,7 @@ func (fs mockFS) Stat(name string) (os.FileInfo, error) {
 }
 
 func TestFindConfigFileRecursive(t *testing.T) {
-	expectedPath := path.Clean("./../../.sops.yaml")
+	expectedPath := path.Clean("./../../.sops.pxf")
 	fs = mockFS{stat: func(name string) (os.FileInfo, error) {
 		if name == expectedPath {
 			return nil, nil
@@ -32,7 +32,7 @@ func TestFindConfigFileRecursive(t *testing.T) {
 }
 
 func TestFindConfigFileCurrentDir(t *testing.T) {
-	expectedPath := path.Clean(".sops.yaml")
+	expectedPath := path.Clean(".sops.pxf")
 	fs = mockFS{stat: func(name string) (os.FileInfo, error) {
 		if name == expectedPath {
 			return nil, nil
@@ -45,381 +45,510 @@ func TestFindConfigFileCurrentDir(t *testing.T) {
 }
 
 var sampleConfig = []byte(`
-creation_rules:
-  - path_regex: foobar*
-    kms: "1"
-    pgp: "2"
-    gcp_kms: "3"
-    hckms:
-      - "tr-west-1:test-key-1"
-    hc_vault_transit_uri: http://4:8200/v1/4/keys/4
-  - path_regex: ""
-    kms: foo
-    pgp: bar
-    gcp_kms: baz
-    hckms:
-      - "tr-west-1:test-key-2"
-    hc_vault_transit_uri: http://127.0.1.1/v1/baz/keys/baz
+creation_rules = [
+  {
+    path_regex = "foobar*"
+    kms = ["1"]
+    pgp = ["2"]
+    gcp_kms = ["3"]
+    hckms = ["tr-west-1:test-key-1"]
+    hc_vault_transit_uri = ["http://4:8200/v1/4/keys/4"]
+  },
+  {
+    path_regex = ""
+    kms = ["foo"]
+    pgp = ["bar"]
+    gcp_kms = ["baz"]
+    hckms = ["tr-west-1:test-key-2"]
+    hc_vault_transit_uri = ["http://127.0.1.1/v1/baz/keys/baz"]
+  }
+]
 `)
 
 var sampleConfigWithPath = []byte(`
-creation_rules:
-  - path_regex: foo/bar*
-    kms: "1"
-    pgp: "2"
-    gcp_kms: "3"
-    hc_vault_uris: http://4:8200/v1/4/keys/4
-  - path_regex: somefilename.yml
-    kms: bilbo
-    pgp: baggins
-    gcp_kms: precious
-    hc_vault_uris: https://pluto/v1/pluto/keys/pluto
-  - path_regex: ""
-    kms: foo
-    pgp: bar
-    gcp_kms: baz
-    hc_vault_uris: https://foz:443/v1/foz/keys/foz
+creation_rules = [
+  {
+    path_regex = "foo/bar*"
+    kms = ["1"]
+    pgp = ["2"]
+    gcp_kms = ["3"]
+  },
+  {
+    path_regex = "somefilename.yml"
+    kms = ["bilbo"]
+    pgp = ["baggins"]
+    gcp_kms = ["precious"]
+  },
+  {
+    path_regex = ""
+    kms = ["foo"]
+    pgp = ["bar"]
+    gcp_kms = ["baz"]
+  }
+]
 `)
 
 var sampleConfigWithAmbiguousPath = []byte(`
-creation_rules:
-  - path_regex: foo/*
-    kms: "1"
-    pgp: "2"
-    gcp_kms: "3"
-    hc_vault_uris: http://4:8200/v1/4/keys/4
+creation_rules = [
+  {
+    path_regex = "foo/*"
+    kms = ["1"]
+    pgp = ["2"]
+    gcp_kms = ["3"]
+  }
+]
 `)
 
 var sampleConfigWithGroups = []byte(`
-creation_rules:
-  - path_regex: foobar*
-    kms: "1"
-    pgp: "2"
-  - path_regex: ""
-    key_groups:
-    - kms:
-      - arn: foo
-        aws_profile: bar
-      - arn: foo
-        context:
-          baz: bam
-      - arn: foo
-        aws_profile: bar
-        context:
-          baz: bam
-      - arn: foo
-        role: '123'
-      - arn: foo
-        aws_profile: bar
-        context:
-          baz: bam
-        role: '123'
-      pgp:
-      - bar
-      gcp_kms:
-      - resource_id: foo
-      hckms:
-      - key_id: tr-west-1:test-key-1
-      azure_keyvault:
-      - vaultUrl: https://foo.vault.azure.net
-        key: foo-key
-        version: fooversion
-      hc_vault:
-      - 'https://foo.vault:8200/v1/foo/keys/foo-key'
-    - kms:
-      - arn: baz
-        aws_profile: foo
-      pgp:
-      - qux
-      gcp_kms:
-      - resource_id: bar
-      - resource_id: baz
-      hckms:
-      - key_id: tr-west-1:test-key-2
-      azure_keyvault:
-      - vaultUrl: https://bar.vault.azure.net
-        key: bar-key
-        version: barversion
-      hc_vault:
-      - 'https://baz.vault:8200/v1/baz/keys/baz-key'
+creation_rules = [
+  {
+    path_regex = "foobar*"
+    kms = ["1"]
+    pgp = ["2"]
+  },
+  {
+    path_regex = ""
+    key_groups = [
+      {
+        kms = [
+          {
+            arn = "foo"
+            aws_profile = "bar"
+          },
+          {
+            arn = "foo"
+            context = {
+              baz: "bam"
+            }
+          },
+          {
+            arn = "foo"
+            aws_profile = "bar"
+            context = {
+              baz: "bam"
+            }
+          },
+          {
+            arn = "foo"
+            role = "123"
+          },
+          {
+            arn = "foo"
+            aws_profile = "bar"
+            context = {
+              baz: "bam"
+            }
+            role = "123"
+          }
+        ]
+        pgp = ["bar"]
+        gcp_kms = [
+          { resource_id = "foo" }
+        ]
+        hckms = [
+          { key_id = "tr-west-1:test-key-1" }
+        ]
+        azure_keyvault = [
+          {
+            vault_url = "https://foo.vault.azure.net"
+            key = "foo-key"
+            version = "fooversion"
+          }
+        ]
+        hc_vault = ["https://foo.vault:8200/v1/foo/keys/foo-key"]
+      },
+      {
+        kms = [
+          {
+            arn = "baz"
+            aws_profile = "foo"
+          }
+        ]
+        pgp = ["qux"]
+        gcp_kms = [
+          { resource_id = "bar" },
+          { resource_id = "baz" }
+        ]
+        hckms = [
+          { key_id = "tr-west-1:test-key-2" }
+        ]
+        azure_keyvault = [
+          {
+            vault_url = "https://bar.vault.azure.net"
+            key = "bar-key"
+            version = "barversion"
+          }
+        ]
+        hc_vault = ["https://baz.vault:8200/v1/baz/keys/baz-key"]
+      }
+    ]
+  }
+]
 `)
 
 var sampleConfigWithMergeType = []byte(`
-creation_rules:
-  - path_regex: ""
-    key_groups:
-    # key00
-    - hc_vault:
-      - 'https://foo.vault:8200/v1/foo/keys/foo-key'
-    - merge:
-      - merge:
-        - pgp:
-          # key01
-          - foo
-          kms:
-          # key02
-          - arn: foo
-            aws_profile: foo
-          # key03
-          - arn: foo
-            aws_profile: bar
-            context:
-              baz: bam
-            role: '123'
-          gcp_kms:
-          # key04
-          - resource_id: foo
-          azure_keyvault:
-          # key05
-          - vaultUrl: https://foo.vault.azure.net
-            key: foo-key
-            version: fooversion
-          hc_vault:
-          # key06
-          - 'https://bar.vault:8200/v1/bar/keys/bar-key'
-        - pgp:
-          # key07
-          - bar
-          kms:
-          # key08
-          - arn: bar
-            aws_profile: bar
-          gcp_kms:
-          # key09
-          - resource_id: bar
-          # key10
-          - resource_id: baz
-          azure_keyvault:
-          # key11
-          - vaultUrl: https://bar.vault.azure.net
-            key: bar-key
-            version: barversion
-          hc_vault:
-          # key12
-          - 'https://baz.vault:8200/v1/baz/keys/baz-key'
-        pgp:
-        # key13
-        - baz
-        kms:
-        # key14
-        - arn: baz
-          aws_profile: baz
-        gcp_kms:
-        # duplicate of key09
-        - resource_id: bar
-        azure_keyvault:
-        # duplicate of key05
-        - vaultUrl: https://foo.vault.azure.net
-          key: foo-key
-          version: fooversion
-        hc_vault:
-        # key15 (duplicate of key00, but that's in a different key_group)
-        - 'https://foo.vault:8200/v1/foo/keys/foo-key'
-      - pgp:
-        # key16
-        - qux
-        kms:
-        # key17
-        - arn: qux
-          aws_profile: qux
-        # key18
-        - arn: baz
-          aws_profile: bar
-        # key19
-        - arn: baz
-          role: '123'
-        gcp_kms:
-        # key20
-        - resource_id: qux
-        # key21
-        - resource_id: fnord
-        azure_keyvault:
-        # key22
-        - vaultUrl: https://baz.vault.azure.net
-          key: baz-key
-          version: bazversion
-        hc_vault:
-        # key23
-        - 'https://qux.vault:8200/v1/qux/keys/qux-key'
-      pgp:
-      # duplicate of key07
-      - bar
-      kms:
-      # duplicate of key08
-      - arn: bar
-        aws_profile: bar
-      # key24
-      - arn: fnord
-        aws_profile: fnord
-      # duplicate of key03
-      - arn: foo
-        aws_profile: bar
-        context:
-          baz: bam
-        role: '123'
-      gcp_kms:
-      # duplicate of key09
-      - resource_id: bar
-      # duplicate of key21
-      - resource_id: fnord
-      azure_keyvault:
-      # duplicate of key11
-      - vaultUrl: https://bar.vault.azure.net
-        key: bar-key
-        version: barversion
-      hc_vault:
-      # duplicate of key12
-      - 'https://baz.vault:8200/v1/baz/keys/baz-key'
-      # key25
-      - 'https://fnord.vault:8200/v1/fnord/keys/fnord-key'
+creation_rules = [
+  {
+    key_groups = [
+      {
+        hc_vault = ["https://foo.vault:8200/v1/foo/keys/foo-key"]
+      },
+      {
+        merge = [
+          {
+            merge = [
+              {
+                kms = [
+                  {
+                    arn = "foo"
+                    aws_profile = "foo"
+                  },
+                  {
+                    arn = "foo"
+                    role = "123"
+                    context = {
+                      baz: "bam"
+                    }
+                    aws_profile = "bar"
+                  }
+                ]
+                gcp_kms = [
+                  { resource_id = "foo" }
+                ]
+                azure_keyvault = [
+                  {
+                    vault_url = "https://foo.vault.azure.net"
+                    key = "foo-key"
+                    version = "fooversion"
+                  }
+                ]
+                hc_vault = ["https://bar.vault:8200/v1/bar/keys/bar-key"]
+                pgp = ["foo"]
+              },
+              {
+                kms = [
+                  {
+                    arn = "bar"
+                    aws_profile = "bar"
+                  }
+                ]
+                gcp_kms = [
+                  { resource_id = "bar" },
+                  { resource_id = "baz" }
+                ]
+                azure_keyvault = [
+                  {
+                    vault_url = "https://bar.vault.azure.net"
+                    key = "bar-key"
+                    version = "barversion"
+                  }
+                ]
+                hc_vault = ["https://baz.vault:8200/v1/baz/keys/baz-key"]
+                pgp = ["bar"]
+              }
+            ]
+            kms = [
+              {
+                arn = "baz"
+                aws_profile = "baz"
+              }
+            ]
+            gcp_kms = [
+              { resource_id = "bar" }
+            ]
+            azure_keyvault = [
+              {
+                vault_url = "https://foo.vault.azure.net"
+                key = "foo-key"
+                version = "fooversion"
+              }
+            ]
+            hc_vault = ["https://foo.vault:8200/v1/foo/keys/foo-key"]
+            pgp = ["baz"]
+          },
+          {
+            kms = [
+              {
+                arn = "qux"
+                aws_profile = "qux"
+              },
+              {
+                arn = "baz"
+                aws_profile = "bar"
+              },
+              {
+                arn = "baz"
+                role = "123"
+              }
+            ]
+            gcp_kms = [
+              { resource_id = "qux" },
+              { resource_id = "fnord" }
+            ]
+            azure_keyvault = [
+              {
+                vault_url = "https://baz.vault.azure.net"
+                key = "baz-key"
+                version = "bazversion"
+              }
+            ]
+            hc_vault = ["https://qux.vault:8200/v1/qux/keys/qux-key"]
+            pgp = ["qux"]
+          }
+        ]
+        kms = [
+          {
+            arn = "bar"
+            aws_profile = "bar"
+          },
+          {
+            arn = "fnord"
+            aws_profile = "fnord"
+          },
+          {
+            arn = "foo"
+            role = "123"
+            context = {
+              baz: "bam"
+            }
+            aws_profile = "bar"
+          }
+        ]
+        gcp_kms = [
+          { resource_id = "bar" },
+          { resource_id = "fnord" }
+        ]
+        azure_keyvault = [
+          {
+            vault_url = "https://bar.vault.azure.net"
+            key = "bar-key"
+            version = "barversion"
+          }
+        ]
+        hc_vault = [
+          "https://baz.vault:8200/v1/baz/keys/baz-key",
+          "https://fnord.vault:8200/v1/fnord/keys/fnord-key"
+        ]
+        pgp = ["bar"]
+      }
+    ]
+  }
+]
 `)
 
 var sampleConfigWithSuffixParameters = []byte(`
-creation_rules:
-  - path_regex: foobar*
-    kms: "1"
-    pgp: "2"
-    unencrypted_suffix: _unencrypted
-  - path_regex: bar?foo$
-    encrypted_suffix: _enc
-    key_groups:
-      - kms:
-          - arn: baz
-        pgp:
-          - qux
-        gcp_kms:
-          - resource_id: bar
-          - resource_id: baz
-        azure_keyvault:
-        - vaultUrl: https://foo.vault.azure.net
-          key: foo-key
-          version: fooversion
-    `)
+creation_rules = [
+  {
+    path_regex = "foobar*"
+    kms = ["1"]
+    pgp = ["2"]
+    unencrypted_suffix = "_unencrypted"
+  },
+  {
+    path_regex = "bar?foo$"
+    encrypted_suffix = "_enc"
+    key_groups = [
+      {
+        kms = [
+          { arn = "baz" }
+        ]
+        pgp = ["qux"]
+        gcp_kms = [
+          { resource_id = "bar" },
+          { resource_id = "baz" }
+        ]
+        azure_keyvault = [
+          {
+            vault_url = "https://foo.vault.azure.net"
+            key = "foo-key"
+            version = "fooversion"
+          }
+        ]
+      }
+    ]
+  }
+]
+`)
 
 var sampleConfigWithEncryptedRegexParameters = []byte(`
-creation_rules:
-  - path_regex: barbar*
-    kms: "1"
-    pgp: "2"
-    encrypted_regex: "^enc:"
-    `)
+creation_rules = [
+  {
+    path_regex = "barbar*"
+    kms = ["1"]
+    pgp = ["2"]
+    encrypted_regex = "^enc:"
+  }
+]
+`)
 
 var sampleConfigWithUnencryptedRegexParameters = []byte(`
-creation_rules:
-  - path_regex: barbar*
-    kms: "1"
-    pgp: "2"
-    unencrypted_regex: "^dec:"
-    `)
+creation_rules = [
+  {
+    path_regex = "barbar*"
+    kms = ["1"]
+    pgp = ["2"]
+    unencrypted_regex = "^dec:"
+  }
+]
+`)
 
 var sampleConfigWithMACOnlyEncrypted = []byte(`
-creation_rules:
-  - path_regex: barbar*
-    kms: "1"
-    pgp: "2"
-    mac_only_encrypted: true
-    `)
+creation_rules = [
+  {
+    path_regex = "barbar*"
+    kms = ["1"]
+    pgp = ["2"]
+    mac_only_encrypted = true
+  }
+]
+`)
 
 var sampleConfigWithEncryptedCommentRegexParameters = []byte(`
-creation_rules:
-  - path_regex: barbar*
-    kms: "1"
-    pgp: "2"
-    encrypted_comment_regex: "sops:enc"
-    `)
+creation_rules = [
+  {
+    path_regex = "barbar*"
+    kms = ["1"]
+    pgp = ["2"]
+    encrypted_comment_regex = "sops:enc"
+  }
+]
+`)
 
 var sampleConfigWithUnencryptedCommentRegexParameters = []byte(`
-creation_rules:
-  - path_regex: barbar*
-    kms: "1"
-    pgp: "2"
-    unencrypted_comment_regex: "sops:dec"
-    `)
+creation_rules = [
+  {
+    path_regex = "barbar*"
+    kms = ["1"]
+    pgp = ["2"]
+    unencrypted_comment_regex = "sops:dec"
+  }
+]
+`)
 
 var sampleConfigWithInvalidParameters = []byte(`
-creation_rules:
-  - path_regex: foobar*
-    kms: "1"
-    pgp: "2"
-    hc_vault_uris: "https://vault.com/v1/bug/keys/pr"
-    unencrypted_suffix: _unencrypted
-    encrypted_suffix: _enc
-    `)
+creation_rules = [
+  {
+    path_regex = "foobar*"
+    kms = ["1"]
+    pgp = ["2"]
+    unencrypted_suffix = "_unencrypted"
+    encrypted_suffix = "_enc"
+  }
+]
+`)
 
 var sampleConfigWithNoMatchingRules = []byte(`
-creation_rules:
-  - path_regex: notexisting
-    pgp: bar
+creation_rules = [
+  {
+    path_regex = "notexisting"
+    pgp = ["bar"]
+  }
+]
 `)
 
 var sampleEmptyConfig = []byte(``)
 
 var sampleConfigWithEmptyCreationRules = []byte(`
-creation_rules:
+creation_rules = []
 `)
 
 var sampleConfigWithOnlyDestinationRules = []byte(`
-destination_rules:
-  - path_regex: ""
-    s3_bucket: "foobar"
-    s3_prefix: "test/"
-    recreation_rule:
-      pgp: newpgp
+destination_rules = [
+  {
+    path_regex = ""
+    s3_bucket = "foobar"
+    s3_prefix = "test/"
+    recreation_rule {
+      pgp = ["newpgp"]
+    }
+  }
+]
 `)
 
 var sampleConfigWithDestinationRule = []byte(`
-creation_rules:
-  - path_regex: foobar*
-    kms: "1"
-    pgp: "2"
-    gcp_kms: "3"
-  - path_regex: ""
-    kms: foo
-    pgp: bar
-    gcp_kms: baz
-destination_rules:
-  - path_regex: ""
-    s3_bucket: "foobar"
-    s3_prefix: "test/"
-    recreation_rule:
-      pgp: newpgp
+creation_rules = [
+  {
+    path_regex = "foobar*"
+    kms = ["1"]
+    pgp = ["2"]
+    gcp_kms = ["3"]
+  },
+  {
+    path_regex = ""
+    kms = ["foo"]
+    pgp = ["bar"]
+    gcp_kms = ["baz"]
+  }
+]
+destination_rules = [
+  {
+    path_regex = ""
+    s3_bucket = "foobar"
+    s3_prefix = "test/"
+    recreation_rule {
+      pgp = ["newpgp"]
+    }
+  }
+]
 `)
 
 var sampleConfigWithVaultDestinationRules = []byte(`
-creation_rules:
-  - path_regex: foobar*
-    kms: "1"
-    pgp: "2"
-    gcp_kms: "3"
-  - path_regex: ""
-    kms: foo
-    pgp: bar
-    gcp_kms: baz
-destination_rules:
-  - vault_path: "foobar/"
-    path_regex: "vault-v2/*"
-  - vault_path: "barfoo/"
-    vault_kv_mount_name: "kv/"
-    vault_kv_version: 1
-    path_regex: "vault-v1/*"
+creation_rules = [
+  {
+    path_regex = "foobar*"
+    kms = ["1"]
+    pgp = ["2"]
+    gcp_kms = ["3"]
+  },
+  {
+    path_regex = ""
+    kms = ["foo"]
+    pgp = ["bar"]
+    gcp_kms = ["baz"]
+  }
+]
+destination_rules = [
+  {
+    vault_path = "foobar/"
+    path_regex = "vault-v2/*"
+  },
+  {
+    vault_path = "barfoo/"
+    vault_kv_mount_name = "kv/"
+    vault_kv_version = 1
+    path_regex = "vault-v1/*"
+  }
+]
 `)
 
 var sampleConfigWithInvalidComplicatedRegexp = []byte(`
-creation_rules:
-  - path_regex: "[ ]\\K(?<!\\d )(?="
-    kms: default
+creation_rules = [
+  {
+    path_regex = "[ ]\\K(?<!\\d )(?="
+    kms = ["default"]
+  }
+]
 `)
 
 var sampleConfigWithComplicatedRegexp = []byte(`
-creation_rules:
-  - path_regex: "stage/dev/feature-.*"
-    kms: dev-feature
-  - path_regex: "stage/dev/.*"
-    kms: dev
-  - path_regex: "stage/staging/.*"
-    kms: staging
-  - path_regex: "stage/.*/.*"
-    kms: default
+creation_rules = [
+  {
+    path_regex = "stage/dev/feature-.*"
+    kms = ["dev-feature"]
+  },
+  {
+    path_regex = "stage/dev/.*"
+    kms = ["dev"]
+  },
+  {
+    path_regex = "stage/staging/.*"
+    kms = ["staging"]
+  },
+  {
+    path_regex = "stage/.*/.*"
+    kms = ["default"]
+  }
+]
 `)
 
 func parseConfigFile(confBytes []byte, t *testing.T) *configFile {
@@ -434,19 +563,19 @@ func TestLoadConfigFile(t *testing.T) {
 		CreationRules: []creationRule{
 			{
 				PathRegex: "foobar*",
-				KMS:       "1",
-				PGP:       "2",
-				GCPKMS:    "3",
+				KMS:       []string{"1"},
+				PGP:       []string{"2"},
+				GCPKMS:    []string{"3"},
 				HCKms:     []string{"tr-west-1:test-key-1"},
-				VaultURI:  "http://4:8200/v1/4/keys/4",
+				VaultURI:  []string{"http://4:8200/v1/4/keys/4"},
 			},
 			{
 				PathRegex: "",
-				KMS:       "foo",
-				PGP:       "bar",
-				GCPKMS:    "baz",
+				KMS:       []string{"foo"},
+				PGP:       []string{"bar"},
+				GCPKMS:    []string{"baz"},
 				HCKms:     []string{"tr-west-1:test-key-2"},
-				VaultURI:  "http://127.0.1.1/v1/baz/keys/baz",
+				VaultURI:  []string{"http://127.0.1.1/v1/baz/keys/baz"},
 			},
 		},
 	}
@@ -463,8 +592,8 @@ func TestLoadConfigFileWithGroups(t *testing.T) {
 		CreationRules: []creationRule{
 			{
 				PathRegex: "foobar*",
-				KMS:       "1",
-				PGP:       "2",
+				KMS:       []string{"1"},
+				PGP:       []string{"2"},
 			},
 			{
 				PathRegex: "",
@@ -733,19 +862,27 @@ func TestLoadConfigFileWithVaultDestinationRules(t *testing.T) {
 
 func TestCreationRuleNativeKeyLists(t *testing.T) {
 	var sampleConfigWithNativeKeyLists = []byte(`
-creation_rules:
-  - path_regex: native_list*
-    pgp:
-      - "85D77543B3D624B63CEA9E6DBC17301B491B3F21"  # name@email.com
-      - "FBC7B9E2A4F9289AC0C1D4843D16CEE4A27381B4"  # server_XYZ
-    kms:
-      - "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
-    age:
-      - "age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p"
-    gcp_kms:
-      - "projects/test-project/locations/global/keyRings/test-ring/cryptoKeys/test-key"
-    hc_vault_transit_uri:
-      - "https://vault.example.com:8200/v1/transit/keys/key1"
+creation_rules = [
+  {
+    path_regex = "native_list*"
+    pgp = [
+      "85D77543B3D624B63CEA9E6DBC17301B491B3F21",
+      "FBC7B9E2A4F9289AC0C1D4843D16CEE4A27381B4"
+    ]
+    kms = [
+      "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+    ]
+    age = [
+      "age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p"
+    ]
+    gcp_kms = [
+      "projects/test-project/locations/global/keyRings/test-ring/cryptoKeys/test-key"
+    ]
+    hc_vault_transit_uri = [
+      "https://vault.example.com:8200/v1/transit/keys/key1"
+    ]
+  }
+]
 `)
 	conf, err := parseCreationRuleForFile(parseConfigFile(sampleConfigWithNativeKeyLists, t), "/conf/path", "native_list_test", nil)
 	assert.Nil(t, err)
@@ -770,49 +907,65 @@ creation_rules:
 
 // Test configurations with multiple destinations should fail
 var sampleConfigWithS3GCSConflict = []byte(`
-destination_rules:
-  - path_regex: '^test/.*'
-    s3_bucket: 'my-s3-bucket'
-    s3_prefix: 'sops/'
-    gcs_bucket: 'my-gcs-bucket'
-    gcs_prefix: 'sops/'
-    recreation_rule:
-      kms: 'arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012'
+destination_rules = [
+  {
+    path_regex = "^test/.*"
+    s3_bucket = "my-s3-bucket"
+    s3_prefix = "sops/"
+    gcs_bucket = "my-gcs-bucket"
+    gcs_prefix = "sops/"
+    recreation_rule {
+      kms = ["arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"]
+    }
+  }
+]
 `)
 
 var sampleConfigWithS3VaultConflict = []byte(`
-destination_rules:
-  - path_regex: '^test/.*'
-    s3_bucket: 'my-s3-bucket'
-    s3_prefix: 'sops/'
-    vault_path: 'secret/sops'
-    vault_address: 'https://vault.example.com'
-    recreation_rule:
-      kms: 'arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012'
+destination_rules = [
+  {
+    path_regex = "^test/.*"
+    s3_bucket = "my-s3-bucket"
+    s3_prefix = "sops/"
+    vault_path = "secret/sops"
+    vault_address = "https://vault.example.com"
+    recreation_rule {
+      kms = ["arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"]
+    }
+  }
+]
 `)
 
 var sampleConfigWithGCSVaultConflict = []byte(`
-destination_rules:
-  - path_regex: '^test/.*'
-    gcs_bucket: 'my-gcs-bucket'
-    gcs_prefix: 'sops/'
-    vault_path: 'secret/sops'
-    vault_address: 'https://vault.example.com'
-    recreation_rule:
-      kms: 'arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012'
+destination_rules = [
+  {
+    path_regex = "^test/.*"
+    gcs_bucket = "my-gcs-bucket"
+    gcs_prefix = "sops/"
+    vault_path = "secret/sops"
+    vault_address = "https://vault.example.com"
+    recreation_rule {
+      kms = ["arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"]
+    }
+  }
+]
 `)
 
 var sampleConfigWithAllThreeDestinations = []byte(`
-destination_rules:
-  - path_regex: '^test/.*'
-    s3_bucket: 'my-s3-bucket'
-    s3_prefix: 'sops/'
-    gcs_bucket: 'my-gcs-bucket'
-    gcs_prefix: 'sops/'
-    vault_path: 'secret/sops'
-    vault_address: 'https://vault.example.com'
-    recreation_rule:
-      kms: 'arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012'
+destination_rules = [
+  {
+    path_regex = "^test/.*"
+    s3_bucket = "my-s3-bucket"
+    s3_prefix = "sops/"
+    gcs_bucket = "my-gcs-bucket"
+    gcs_prefix = "sops/"
+    vault_path = "secret/sops"
+    vault_address = "https://vault.example.com"
+    recreation_rule {
+      kms = ["arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"]
+    }
+  }
+]
 `)
 
 func TestDestinationValidationS3GCSConflict(t *testing.T) {
@@ -849,12 +1002,16 @@ func TestDestinationValidationAllThreeDestinationsConflict(t *testing.T) {
 
 func TestDestinationValidationSingleS3Destination(t *testing.T) {
 	validS3Config := []byte(`
-destination_rules:
-  - path_regex: '^test/.*'
-    s3_bucket: 'my-s3-bucket'
-    s3_prefix: 'sops/'
-    recreation_rule:
-      kms: 'arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012'
+destination_rules = [
+  {
+    path_regex = "^test/.*"
+    s3_bucket = "my-s3-bucket"
+    s3_prefix = "sops/"
+    recreation_rule {
+      kms = ["arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"]
+    }
+  }
+]
 `)
 	conf, err := parseDestinationRuleForFile(parseConfigFile(validS3Config, t), "test/secrets.yaml", nil)
 	assert.Nil(t, err)
@@ -864,12 +1021,16 @@ destination_rules:
 
 func TestDestinationValidationSingleGCSDestination(t *testing.T) {
 	validGCSConfig := []byte(`
-destination_rules:
-  - path_regex: '^test/.*'
-    gcs_bucket: 'my-gcs-bucket'
-    gcs_prefix: 'sops/'
-    recreation_rule:
-      kms: 'arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012'
+destination_rules = [
+  {
+    path_regex = "^test/.*"
+    gcs_bucket = "my-gcs-bucket"
+    gcs_prefix = "sops/"
+    recreation_rule {
+      kms = ["arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"]
+    }
+  }
+]
 `)
 	conf, err := parseDestinationRuleForFile(parseConfigFile(validGCSConfig, t), "test/secrets.yaml", nil)
 	assert.Nil(t, err)
@@ -879,12 +1040,16 @@ destination_rules:
 
 func TestDestinationValidationSingleVaultDestination(t *testing.T) {
 	validVaultConfig := []byte(`
-destination_rules:
-  - path_regex: '^test/.*'
-    vault_path: 'secret/sops'
-    vault_address: 'https://vault.example.com'
-    recreation_rule:
-      kms: 'arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012'
+destination_rules = [
+  {
+    path_regex = "^test/.*"
+    vault_path = "secret/sops"
+    vault_address = "https://vault.example.com"
+    recreation_rule {
+      kms = ["arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"]
+    }
+  }
+]
 `)
 	conf, err := parseDestinationRuleForFile(parseConfigFile(validVaultConfig, t), "test/secrets.yaml", nil)
 	assert.Nil(t, err)
@@ -898,9 +1063,12 @@ destination_rules:
 func TestKeyGroupsForFileWithExternalEncryptionContext(t *testing.T) {
 	// Config with flat KMS format (not key_groups) - this is where external context applies
 	var sampleConfigWithFlatKMS = []byte(`
-creation_rules:
-  - path_regex: ""
-    kms: "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"
+creation_rules = [
+  {
+    path_regex = ""
+    kms = ["arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"]
+  }
+]
 `)
 
 	// External encryption context passed via --encryption-context flag

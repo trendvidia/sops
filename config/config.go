@@ -11,16 +11,17 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/trendvidia/protowire-go/encoding/pxf"
 	"github.com/trendvidia/sops/v4"
 	"github.com/trendvidia/sops/v4/age"
 	"github.com/trendvidia/sops/v4/azkv"
+	"github.com/trendvidia/sops/v4/config/configpb"
 	"github.com/trendvidia/sops/v4/gcpkms"
 	"github.com/trendvidia/sops/v4/hckms"
 	"github.com/trendvidia/sops/v4/hcvault"
 	"github.com/trendvidia/sops/v4/kms"
 	"github.com/trendvidia/sops/v4/pgp"
 	"github.com/trendvidia/sops/v4/publish"
-	"go.yaml.in/yaml/v3"
 )
 
 type fileSystem interface {
@@ -38,10 +39,14 @@ func (fs osFS) Stat(name string) (os.FileInfo, error) {
 var fs fileSystem = osFS{stat: os.Stat}
 
 const (
-	maxDepth            = 100
-	configFileName      = ".sops.yaml"
-	alternateConfigName = ".sops.yml"
+	maxDepth       = 100
+	configFileName = ".sops.pxf"
 )
+
+// legacyConfigNames are the pre-PXF (YAML) config file names. They are no
+// longer loaded, but sops still looks for them so it can emit a helpful
+// "please migrate to .sops.pxf" warning when it finds one.
+var legacyConfigNames = []string{".sops.yaml", ".sops.yml"}
 
 // ConfigFileResult contains the path to a config file and any warnings
 type ConfigFileResult struct {
@@ -70,12 +75,15 @@ func LookupConfigFile(start string) (ConfigFileResult, error) {
 			return result, nil
 		}
 
-		// Check for alternate filename if we haven't found one yet
+		// Check for a legacy (YAML) config filename if we haven't found
+		// one yet, so we can warn the user to migrate to .sops.pxf.
 		if foundAlternatePath == "" {
-			alternatePath := path.Join(filepath, alternateConfigName)
-			_, altErr := fs.Stat(alternatePath)
-			if altErr == nil {
-				foundAlternatePath = alternatePath
+			for _, legacyName := range legacyConfigNames {
+				legacyPath := path.Join(filepath, legacyName)
+				if _, altErr := fs.Stat(legacyPath); altErr == nil {
+					foundAlternatePath = legacyPath
+					break
+				}
 			}
 		}
 
@@ -269,13 +277,165 @@ func NewStoresConfig() *StoresConfig {
 	return storesConfig
 }
 
-// Load loads a sops config file into a temporary struct
-func (f *configFile) load(bytes []byte) error {
-	err := yaml.Unmarshal(bytes, f)
-	if err != nil {
-		return fmt.Errorf("Could not unmarshal config file: %s", err)
+// Load parses PXF-encoded config bytes into the temporary struct. The
+// caller is expected to have pre-populated f.Stores with defaults (via
+// NewStoresConfig); store options present in the PXF document override
+// those defaults, while absent options are left untouched.
+func (f *configFile) load(data []byte) error {
+	var pb configpb.ConfigFile
+	if err := pxf.Unmarshal(data, &pb); err != nil {
+		return fmt.Errorf("could not unmarshal config file: %w", err)
 	}
+	f.CreationRules = creationRulesFromProto(pb.GetCreationRules())
+	f.DestinationRules = destinationRulesFromProto(pb.GetDestinationRules())
+	applyStoresConfig(&f.Stores, pb.GetStores())
 	return nil
+}
+
+func creationRulesFromProto(pbRules []*configpb.CreationRule) []creationRule {
+	if len(pbRules) == 0 {
+		return nil
+	}
+	rules := make([]creationRule, len(pbRules))
+	for i, r := range pbRules {
+		rules[i] = creationRuleFromProto(r)
+	}
+	return rules
+}
+
+func creationRuleFromProto(r *configpb.CreationRule) creationRule {
+	return creationRule{
+		PathRegex:               r.GetPathRegex(),
+		KMS:                     strsOrNil(r.GetKms()),
+		AwsProfile:              r.GetAwsProfile(),
+		Age:                     strsOrNil(r.GetAge()),
+		PGP:                     strsOrNil(r.GetPgp()),
+		GCPKMS:                  strsOrNil(r.GetGcpKms()),
+		HCKms:                   r.GetHckms(),
+		AzureKeyVault:           strsOrNil(r.GetAzureKeyvault()),
+		VaultURI:                strsOrNil(r.GetHcVaultTransitUri()),
+		KeyGroups:               keyGroupsFromProto(r.GetKeyGroups()),
+		ShamirThreshold:         int(r.GetShamirThreshold()),
+		UnencryptedSuffix:       r.GetUnencryptedSuffix(),
+		EncryptedSuffix:         r.GetEncryptedSuffix(),
+		UnencryptedRegex:        r.GetUnencryptedRegex(),
+		EncryptedRegex:          r.GetEncryptedRegex(),
+		UnencryptedCommentRegex: r.GetUnencryptedCommentRegex(),
+		EncryptedCommentRegex:   r.GetEncryptedCommentRegex(),
+		MACOnlyEncrypted:        r.GetMacOnlyEncrypted(),
+	}
+}
+
+func keyGroupsFromProto(pbGroups []*configpb.KeyGroup) []keyGroup {
+	if len(pbGroups) == 0 {
+		return nil
+	}
+	groups := make([]keyGroup, len(pbGroups))
+	for i, g := range pbGroups {
+		groups[i] = keyGroupFromProto(g)
+	}
+	return groups
+}
+
+func keyGroupFromProto(g *configpb.KeyGroup) keyGroup {
+	kg := keyGroup{
+		Merge:   keyGroupsFromProto(g.GetMerge()),
+		Vault:   g.GetHcVault(),
+		Age:     g.GetAge(),
+		PGP:     g.GetPgp(),
+		HCKms:   nil,
+		KMS:     nil,
+		GCPKMS:  nil,
+		AzureKV: nil,
+	}
+	for _, k := range g.GetKms() {
+		kg.KMS = append(kg.KMS, kmsKey{
+			Arn:        k.GetArn(),
+			Role:       k.GetRole(),
+			Context:    stringPtrMap(k.GetContext()),
+			AwsProfile: k.GetAwsProfile(),
+		})
+	}
+	for _, k := range g.GetGcpKms() {
+		kg.GCPKMS = append(kg.GCPKMS, gcpKmsKey{ResourceID: k.GetResourceId()})
+	}
+	for _, k := range g.GetHckms() {
+		kg.HCKms = append(kg.HCKms, hckmsKey{KeyID: k.GetKeyId()})
+	}
+	for _, k := range g.GetAzureKeyvault() {
+		kg.AzureKV = append(kg.AzureKV, azureKVKey{
+			VaultURL: k.GetVaultUrl(),
+			Key:      k.GetKey(),
+			Version:  k.GetVersion(),
+		})
+	}
+	return kg
+}
+
+func destinationRulesFromProto(pbRules []*configpb.DestinationRule) []destinationRule {
+	if len(pbRules) == 0 {
+		return nil
+	}
+	rules := make([]destinationRule, len(pbRules))
+	for i, r := range pbRules {
+		rules[i] = destinationRule{
+			PathRegex:        r.GetPathRegex(),
+			S3Bucket:         r.GetS3Bucket(),
+			S3Prefix:         r.GetS3Prefix(),
+			GCSBucket:        r.GetGcsBucket(),
+			GCSPrefix:        r.GetGcsPrefix(),
+			VaultPath:        r.GetVaultPath(),
+			VaultAddress:     r.GetVaultAddress(),
+			VaultKVMountName: r.GetVaultKvMountName(),
+			VaultKVVersion:   int(r.GetVaultKvVersion()),
+			RecreationRule:   creationRuleFromProto(r.GetRecreationRule()),
+			OmitExtensions:   r.GetOmitExtensions(),
+		}
+	}
+	return rules
+}
+
+// applyStoresConfig overlays store options from the PXF document onto the
+// already-defaulted StoresConfig. Only the indent fields carry presence
+// semantics: an absent indent leaves the default (-1 for JSON/JSON-binary)
+// in place, while an explicitly set value (including 0) overrides it.
+func applyStoresConfig(dst *StoresConfig, pb *configpb.StoresConfig) {
+	if pb == nil {
+		return
+	}
+	if js := pb.GetJson(); js != nil && js.Indent != nil {
+		dst.JSON.Indent = int(js.GetIndent())
+	}
+	if jb := pb.GetJsonBinary(); jb != nil && jb.Indent != nil {
+		dst.JSONBinary.Indent = int(jb.GetIndent())
+	}
+	if y := pb.GetYaml(); y != nil && y.Indent != nil {
+		dst.YAML.Indent = int(y.GetIndent())
+	}
+}
+
+// strsOrNil returns nil for an empty slice so that an unset repeated key
+// field lands in the creationRule's interface{} slot as a nil interface
+// (matching the pre-PXF YAML behavior), rather than a typed empty slice.
+func strsOrNil(s []string) interface{} {
+	if len(s) == 0 {
+		return nil
+	}
+	return s
+}
+
+// stringPtrMap converts a proto map<string,string> into the map[string]*string
+// shape kms.NewMasterKeyWithProfile expects for its encryption context.
+func stringPtrMap(m map[string]string) map[string]*string {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]*string, len(m))
+	for k, v := range m {
+		v := v
+		out[k] = &v
+	}
+	return out
 }
 
 // Config is the configuration for a given SOPS file
