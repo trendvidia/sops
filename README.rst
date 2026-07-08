@@ -202,12 +202,16 @@ exact key ID of the subkey to SOPS, since GnuPG might use *another* subkey inste
 to encrypt the file key with. To force GnuPG to use a specific subkey, you need to
 append ``!`` to the key's fingerprint.
 
-.. code:: yaml
+.. code:: pxf
 
-    creation_rules:
-        - pgp: >-
-            85D77543B3D624B63CEA9E6DBC17301B491B3F21!,
-            E60892BB9BD89A69F759A1A0A3D652173B763E8F!
+    creation_rules = [
+      {
+        pgp = [
+          "85D77543B3D624B63CEA9E6DBC17301B491B3F21!",
+          "E60892BB9BD89A69F759A1A0A3D652173B763E8F!"
+        ]
+      }
+    ]
 
 Please note that this is only passed on correctly to GnuPG since SOPS 3.9.3.
 
@@ -344,7 +348,7 @@ matches them against the file's stanzas — same behavior as a line-based
    ``--age-key-name`` is given, this is what gets used as the recipient — so
    in the file above, ``sops encrypt test.yaml`` would encrypt with
    ``production``.
-#. ``.sops.yaml`` ``creation_rules`` (see below).
+#. ``.sops.pxf`` ``creation_rules`` (see below).
 
 A line-based ``keys.txt`` (no ``.pxf`` extension) continues to parse exactly
 as before. The PXF path is opt-in via the file extension.
@@ -355,14 +359,18 @@ as before. The PXF path is opt-in via the file extension.
 ``Recipients`` let you go from a name to a recipient or vice-versa without
 depending on the rest of the age driver.
 
-A list of age recipients can be added to the ``.sops.yaml``:
+A list of age recipients can be added to the ``.sops.pxf``:
 
-.. code:: yaml
+.. code:: pxf
 
-    creation_rules:
-        - age: >-
-            age1s3cqcks5genc6ru8chl0hkkd04zmxvczsvdxq99ekffe4gmvjpzsedk23c,
-            age1qe5lxzzeppw5k79vxn3872272sgy224g2nzqlzy3uljs84say3yqgvd0sw
+    creation_rules = [
+      {
+        age = [
+          "age1s3cqcks5genc6ru8chl0hkkd04zmxvczsvdxq99ekffe4gmvjpzsedk23c",
+          "age1qe5lxzzeppw5k79vxn3872272sgy224g2nzqlzy3uljs84say3yqgvd0sw"
+        ]
+      }
+    ]
 
 It is also possible to use ``updatekeys``, when adding or removing age recipients. For example:
 
@@ -573,14 +581,14 @@ In both cases, ``sops`` will assume that the data you provide is in YAML format,
 data in YAML as well. The second form allows to use different formats for input and output.
 
 To encrypt, it is important to note that SOPS also uses the filename to look up the correct creation rule from
-``.sops.yaml``. Therefore, you must provide the ``--filename-override`` parameter which allows you to tell
+``.sops.pxf``. Therefore, you must provide the ``--filename-override`` parameter which allows you to tell
 SOPS which filename to use to match creation rules:
 
 .. code:: sh
 
     $ echo 'foo: bar' | sops encrypt --filename-override path/filename.sops.yaml > encrypted-data
 
-SOPS will find a matching creation rule for ``path/filename.sops.yaml`` in ``.sops.yaml`` and use that one to
+SOPS will find a matching creation rule for ``path/filename.sops.yaml`` in ``.sops.pxf`` and use that one to
 encrypt the data from stdin. This filename will also be used to determine the input and output store. As always,
 the input store type can be adjusted by passing ``--input-type``, and the output store type by passing
 ``--output-type``:
@@ -776,12 +784,17 @@ To easily deploy Vault locally: (DO NOT DO THIS FOR PRODUCTION!!!)
 
     $ sops encrypt --hc-vault-transit $VAULT_ADDR/v1/sops/keys/firstkey vault_example.yml
 
-    $ cat <<EOF > .sops.yaml
-    creation_rules:
-        - path_regex: \.dev\.yaml$
-          hc_vault_transit_uri: "$VAULT_ADDR/v1/sops/keys/secondkey"
-        - path_regex: \.prod\.yaml$
-          hc_vault_transit_uri: "$VAULT_ADDR/v1/sops/keys/thirdkey"
+    $ cat <<EOF > .sops.pxf
+    creation_rules = [
+      {
+        path_regex = "\\\\.dev\\\\.yaml\$"
+        hc_vault_transit_uri = ["$VAULT_ADDR/v1/sops/keys/secondkey"]
+      },
+      {
+        path_regex = "\\\\.prod\\\\.yaml\$"
+        hc_vault_transit_uri = ["$VAULT_ADDR/v1/sops/keys/thirdkey"]
+      }
+    ]
     EOF
 
     $ sops encrypt --verbose prod/raw.yaml > prod/encrypted.yaml
@@ -852,14 +865,19 @@ And decrypt it using:
 
     $ sops decrypt test.enc.yaml
 
-You can also configure HuaweiCloud KMS keys in the ``.sops.yaml`` config file:
+You can also configure HuaweiCloud KMS keys in the ``.sops.pxf`` config file:
 
-.. code:: yaml
+.. code:: pxf
 
-    creation_rules:
-        - path_regex: \.hckms\.yaml$
-          hckms:
-            - tr-west-1:abc12345-6789-0123-4567-890123456789,tr-west-2:def67890-1234-5678-9012-345678901234
+    creation_rules = [
+      {
+        path_regex = "\\.hckms\\.yaml$"
+        hckms = [
+          "tr-west-1:abc12345-6789-0123-4567-890123456789",
+          "tr-west-2:def67890-1234-5678-9012-345678901234"
+        ]
+      }
+    ]
 
 Adding and removing keys
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -874,7 +892,7 @@ parameters again.
 Master PGP and KMS keys can be added and removed from a ``sops`` file in one of
 three ways:
 
-1. By using a ``.sops.yaml`` file and the ``updatekeys`` command.
+1. By using a ``.sops.pxf`` file and the ``updatekeys`` command.
 
 2. By using command line flags.
 
@@ -886,18 +904,20 @@ The SOPS team recommends the ``updatekeys`` approach.
 ``updatekeys`` command
 **********************
 
-The ``updatekeys`` command uses the `.sops.yaml <#using-sops-yaml-conf-to-select-kms-pgp-for-new-files>`_
+The ``updatekeys`` command uses the `.sops.pxf <#using-sops-pxf-conf-to-select-kms-pgp-for-new-files>`_
 configuration file to update (add or remove) the corresponding secrets in the
-encrypted file. Note that the example below uses the
-`Block Scalar yaml construct <https://yaml-multiline.info/>`_ to build a space
-separated list.
+encrypted file.
 
-.. code:: yaml
+.. code:: pxf
 
-    creation_rules:
-        - pgp: >-
-            85D77543B3D624B63CEA9E6DBC17301B491B3F21,
-            FBC7B9E2A4F9289AC0C1D4843D16CEE4A27381B4
+    creation_rules = [
+      {
+        pgp = [
+          "85D77543B3D624B63CEA9E6DBC17301B491B3F21",
+          "FBC7B9E2A4F9289AC0C1D4843D16CEE4A27381B4"
+        ]
+      }
+    ]
 
 .. code:: sh
 
@@ -1086,18 +1106,21 @@ stdout.
 
     $ sops rotate example.yaml
 
-Using .sops.yaml conf to select KMS, PGP and age for new files
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Using .sops.pxf conf to select KMS, PGP and age for new files
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 It is often tedious to specify the ``--kms`` ``--gcp-kms`` ``--hckms`` ``--pgp`` and ``--age`` parameters for creation
 of all new files. If your secrets are stored under a specific directory, like a
-``git`` repository, you can create a ``.sops.yaml`` configuration file at the root
+``git`` repository, you can create a ``.sops.pxf`` configuration file at the root
 directory to define which keys are used for which filename.
 
 .. note::
 
-  The file needs to be named ``.sops.yaml``. Other names (i.e. ``.sops.yml``) won't be automatically
-  discovered by SOPS. You'll need to pass the ``--config .sops.yml`` option for it to be picked up.
+  The file needs to be named ``.sops.pxf`` and written in `PXF (protowire text format)`_.
+  It won't be automatically discovered under any other name. To use a differently named
+  config file, pass the ``--config <path>`` option for it to be picked up. The legacy
+  YAML config (``.sops.yaml`` / ``.sops.yml``) is no longer loaded; if one is found while
+  searching, SOPS warns and ignores it.
 
 Let's take an example:
 
@@ -1106,72 +1129,107 @@ Let's take an example:
 * other files use a third set of KMS C and PGP
 * all live under **mysecretrepo/something.{dev,prod,gcp}.yaml**
 
-Under those circumstances, a file placed at **mysecretrepo/.sops.yaml**
+Under those circumstances, a file placed at **mysecretrepo/.sops.pxf**
 can manage the three sets of configurations for the three types of files:
 
-.. code:: yaml
+.. code:: pxf
 
     # creation rules are evaluated sequentially, the first match wins
-    creation_rules:
-        # upon creation of a file that matches the pattern *.dev.yaml,
-        # KMS set A as well as PGP and age is used
-        - path_regex: \.dev\.yaml$
-          kms: 'arn:aws:kms:us-west-2:927034868273:key/fe86dd69-4132-404c-ab86-4269956b4500,arn:aws:kms:us-west-2:361527076523:key/5052f06a-5d3f-489e-b86c-57201e06f31e+arn:aws:iam::361527076523:role/hiera-sops-prod'
-          pgp: 'FBC7B9E2A4F9289AC0C1D4843D16CEE4A27381B4'
-          age: 'age129h70qwx39k7h5x6l9hg566nwm53527zvamre8vep9e3plsm44uqgy8gla'
-
-        # prod files use KMS set B in the PROD IAM, PGP and age
-        - path_regex: \.prod\.yaml$
-          kms: 'arn:aws:kms:us-west-2:361527076523:key/5052f06a-5d3f-489e-b86c-57201e06f31e+arn:aws:iam::361527076523:role/hiera-sops-prod,arn:aws:kms:eu-central-1:361527076523:key/cb1fab90-8d17-42a1-a9d8-334968904f94+arn:aws:iam::361527076523:role/hiera-sops-prod'
-          pgp: 'FBC7B9E2A4F9289AC0C1D4843D16CEE4A27381B4'
-          age: 'age129h70qwx39k7h5x6l9hg566nwm53527zvamre8vep9e3plsm44uqgy8gla'
-          hc_vault_uris: "http://localhost:8200/v1/sops/keys/thirdkey"
-
-        # gcp files using GCP KMS
-        - path_regex: \.gcp\.yaml$
-          gcp_kms: projects/mygcproject/locations/global/keyRings/mykeyring/cryptoKeys/thekey
-
-        # hckms files using HuaweiCloud KMS
-        - path_regex: \.hckms\.yaml$
-          hckms: tr-west-1:abc12345-6789-0123-4567-890123456789,tr-west-2:def67890-1234-5678-9012-345678901234
-
-        # Finally, if the rules above have not matched, this one is a
-        # catchall that will encrypt the file using KMS set C as well as PGP
-        # The absence of a path_regex means it will match everything
-        - kms: 'arn:aws:kms:us-west-2:927034868273:key/fe86dd69-4132-404c-ab86-4269956b4500,arn:aws:kms:us-west-2:142069644989:key/846cfb17-373d-49b9-8baf-f36b04512e47,arn:aws:kms:us-west-2:361527076523:key/5052f06a-5d3f-489e-b86c-57201e06f31e'
-          pgp: 'FBC7B9E2A4F9289AC0C1D4843D16CEE4A27381B4'
+    creation_rules = [
+      # upon creation of a file that matches the pattern *.dev.yaml,
+      # KMS set A as well as PGP and age is used
+      {
+        path_regex = "\\.dev\\.yaml$"
+        kms = [
+          "arn:aws:kms:us-west-2:927034868273:key/fe86dd69-4132-404c-ab86-4269956b4500",
+          "arn:aws:kms:us-west-2:361527076523:key/5052f06a-5d3f-489e-b86c-57201e06f31e+arn:aws:iam::361527076523:role/hiera-sops-prod"
+        ]
+        pgp = ["FBC7B9E2A4F9289AC0C1D4843D16CEE4A27381B4"]
+        age = ["age129h70qwx39k7h5x6l9hg566nwm53527zvamre8vep9e3plsm44uqgy8gla"]
+      },
+      # prod files use KMS set B in the PROD IAM, PGP and age
+      {
+        path_regex = "\\.prod\\.yaml$"
+        kms = [
+          "arn:aws:kms:us-west-2:361527076523:key/5052f06a-5d3f-489e-b86c-57201e06f31e+arn:aws:iam::361527076523:role/hiera-sops-prod",
+          "arn:aws:kms:eu-central-1:361527076523:key/cb1fab90-8d17-42a1-a9d8-334968904f94+arn:aws:iam::361527076523:role/hiera-sops-prod"
+        ]
+        pgp = ["FBC7B9E2A4F9289AC0C1D4843D16CEE4A27381B4"]
+        age = ["age129h70qwx39k7h5x6l9hg566nwm53527zvamre8vep9e3plsm44uqgy8gla"]
+        hc_vault_transit_uri = ["http://localhost:8200/v1/sops/keys/thirdkey"]
+      },
+      # gcp files using GCP KMS
+      {
+        path_regex = "\\.gcp\\.yaml$"
+        gcp_kms = ["projects/mygcproject/locations/global/keyRings/mykeyring/cryptoKeys/thekey"]
+      },
+      # hckms files using HuaweiCloud KMS
+      {
+        path_regex = "\\.hckms\\.yaml$"
+        hckms = [
+          "tr-west-1:abc12345-6789-0123-4567-890123456789",
+          "tr-west-2:def67890-1234-5678-9012-345678901234"
+        ]
+      },
+      # Finally, if the rules above have not matched, this one is a
+      # catchall that will encrypt the file using KMS set C as well as PGP.
+      # The absence of a path_regex means it will match everything.
+      {
+        kms = [
+          "arn:aws:kms:us-west-2:927034868273:key/fe86dd69-4132-404c-ab86-4269956b4500",
+          "arn:aws:kms:us-west-2:142069644989:key/846cfb17-373d-49b9-8baf-f36b04512e47",
+          "arn:aws:kms:us-west-2:361527076523:key/5052f06a-5d3f-489e-b86c-57201e06f31e"
+        ]
+        pgp = ["FBC7B9E2A4F9289AC0C1D4843D16CEE4A27381B4"]
+      }
+    ]
 
 When creating any file under **mysecretrepo**, whether at the root or under
-a subdirectory, SOPS will recursively look for a ``.sops.yaml`` file. If one is
+a subdirectory, SOPS will recursively look for a ``.sops.pxf`` file. If one is
 found, the filename of the file being created is compared with the filename
 regexes of the configuration file. The first regex that matches is selected,
 and its KMS and PGP keys are used to encrypt the file. It should be noted that
-the looking up of ``.sops.yaml`` is from the working directory (CWD) instead of
+the looking up of ``.sops.pxf`` is from the working directory (CWD) instead of
 the directory of the encrypting file (see `Issue 242 <https://github.com/getsops/sops/issues/242>`_).
 
-The ``path_regex`` checks the path of the encrypting file relative to the ``.sops.yaml`` config file. Here is another example:
+The ``path_regex`` checks the path of the encrypting file relative to the ``.sops.pxf`` config file. Here is another example:
 
 * files located under directory **development** should use one set of KMS A
 * files located under directory **production** should use another set of KMS B
 * other files use a third set of KMS C
 
-.. code:: yaml
+.. code:: pxf
 
-    creation_rules:
-        # upon creation of a file under development,
-        # KMS set A is used
-        - path_regex: .*/development/.*
-          kms: 'arn:aws:kms:us-west-2:927034868273:key/fe86dd69-4132-404c-ab86-4269956b4500,arn:aws:kms:us-west-2:361527076523:key/5052f06a-5d3f-489e-b86c-57201e06f31e+arn:aws:iam::361527076523:role/hiera-sops-prod'
-          pgp: 'FBC7B9E2A4F9289AC0C1D4843D16CEE4A27381B4'
-
-        # prod files use KMS set B in the PROD IAM
-        - path_regex: .*/production/.*
-          kms: 'arn:aws:kms:us-west-2:361527076523:key/5052f06a-5d3f-489e-b86c-57201e06f31e+arn:aws:iam::361527076523:role/hiera-sops-prod,arn:aws:kms:eu-central-1:361527076523:key/cb1fab90-8d17-42a1-a9d8-334968904f94+arn:aws:iam::361527076523:role/hiera-sops-prod'
-          pgp: 'FBC7B9E2A4F9289AC0C1D4843D16CEE4A27381B4'
-
-        # other files use KMS set C
-        - kms: 'arn:aws:kms:us-west-2:927034868273:key/fe86dd69-4132-404c-ab86-4269956b4500,arn:aws:kms:us-west-2:142069644989:key/846cfb17-373d-49b9-8baf-f36b04512e47,arn:aws:kms:us-west-2:361527076523:key/5052f06a-5d3f-489e-b86c-57201e06f31e'
-          pgp: 'FBC7B9E2A4F9289AC0C1D4843D16CEE4A27381B4'
+    creation_rules = [
+      # upon creation of a file under development,
+      # KMS set A is used
+      {
+        path_regex = ".*/development/.*"
+        kms = [
+          "arn:aws:kms:us-west-2:927034868273:key/fe86dd69-4132-404c-ab86-4269956b4500",
+          "arn:aws:kms:us-west-2:361527076523:key/5052f06a-5d3f-489e-b86c-57201e06f31e+arn:aws:iam::361527076523:role/hiera-sops-prod"
+        ]
+        pgp = ["FBC7B9E2A4F9289AC0C1D4843D16CEE4A27381B4"]
+      },
+      # prod files use KMS set B in the PROD IAM
+      {
+        path_regex = ".*/production/.*"
+        kms = [
+          "arn:aws:kms:us-west-2:361527076523:key/5052f06a-5d3f-489e-b86c-57201e06f31e+arn:aws:iam::361527076523:role/hiera-sops-prod",
+          "arn:aws:kms:eu-central-1:361527076523:key/cb1fab90-8d17-42a1-a9d8-334968904f94+arn:aws:iam::361527076523:role/hiera-sops-prod"
+        ]
+        pgp = ["FBC7B9E2A4F9289AC0C1D4843D16CEE4A27381B4"]
+      },
+      # other files use KMS set C
+      {
+        kms = [
+          "arn:aws:kms:us-west-2:927034868273:key/fe86dd69-4132-404c-ab86-4269956b4500",
+          "arn:aws:kms:us-west-2:142069644989:key/846cfb17-373d-49b9-8baf-f36b04512e47",
+          "arn:aws:kms:us-west-2:361527076523:key/5052f06a-5d3f-489e-b86c-57201e06f31e"
+        ]
+        pgp = ["FBC7B9E2A4F9289AC0C1D4843D16CEE4A27381B4"]
+      }
+    ]
 
 Creating a new file with the right keys is now as simple as
 
@@ -1235,35 +1293,47 @@ from ``my_file.yaml``:
 
     $ sops groups delete --file my_file.yaml 0
 
-Key groups can also be specified in the ``.sops.yaml`` config file,
+Key groups can also be specified in the ``.sops.pxf`` config file,
 like so:
 
-.. code:: yaml
+.. code:: pxf
 
-    creation_rules:
-        - path_regex: .*keygroups.*
-          key_groups:
-              # First key group
-              - pgp:
-                    - fingerprint1
-                    - fingerprint2
-                kms:
-                    - arn: arn1
-                      role: role1
-                      context:
-                          foo: bar
-                    - arn: arn2
-                      aws_profile: myprofile
-              # Second key group
-              - pgp:
-                    - fingerprint3
-                    - fingerprint4
-                kms:
-                    - arn: arn3
-                    - arn: arn4
-              # Third key group
-              - pgp:
-                    - fingerprint5
+    creation_rules = [
+      {
+        path_regex = ".*keygroups.*"
+        key_groups = [
+          # First key group
+          {
+            pgp = ["fingerprint1", "fingerprint2"]
+            kms = [
+              {
+                arn = "arn1"
+                role = "role1"
+                context = {
+                  foo: "bar"
+                }
+              },
+              {
+                arn = "arn2"
+                aws_profile = "myprofile"
+              }
+            ]
+          },
+          # Second key group
+          {
+            pgp = ["fingerprint3", "fingerprint4"]
+            kms = [
+              { arn = "arn3" },
+              { arn = "arn4" }
+            ]
+          },
+          # Third key group
+          {
+            pgp = ["fingerprint5"]
+          }
+        ]
+      }
+    ]
 
 Given this configuration, we can create a new encrypted file like we normally
 would, and optionally provide the ``--shamir-secret-sharing-threshold`` command line
@@ -1277,36 +1347,48 @@ For example:
 
     $ sops edit --shamir-secret-sharing-threshold 2 example.json
 
-Alternatively, you can configure the Shamir threshold for each creation rule in the ``.sops.yaml`` config
+Alternatively, you can configure the Shamir threshold for each creation rule in the ``.sops.pxf`` config
 with ``shamir_threshold``:
 
-.. code:: yaml
+.. code:: pxf
 
-    creation_rules:
-        - path_regex: .*keygroups.*
-          shamir_threshold: 2
-          key_groups:
-              # First key group
-              - pgp:
-                    - fingerprint1
-                    - fingerprint2
-                kms:
-                    - arn: arn1
-                      role: role1
-                      context:
-                          foo: bar
-                    - arn: arn2
-                      aws_profile: myprofile
-              # Second key group
-              - pgp:
-                    - fingerprint3
-                    - fingerprint4
-                kms:
-                    - arn: arn3
-                    - arn: arn4
-              # Third key group
-              - pgp:
-                    - fingerprint5
+    creation_rules = [
+      {
+        path_regex = ".*keygroups.*"
+        shamir_threshold = 2
+        key_groups = [
+          # First key group
+          {
+            pgp = ["fingerprint1", "fingerprint2"]
+            kms = [
+              {
+                arn = "arn1"
+                role = "role1"
+                context = {
+                  foo: "bar"
+                }
+              },
+              {
+                arn = "arn2"
+                aws_profile = "myprofile"
+              }
+            ]
+          },
+          # Second key group
+          {
+            pgp = ["fingerprint3", "fingerprint4"]
+            kms = [
+              { arn = "arn3" },
+              { arn = "arn4" }
+            ]
+          },
+          # Third key group
+          {
+            pgp = ["fingerprint5"]
+          }
+        ]
+      }
+    ]
 
 And then run ``sops edit example.json``.
 
@@ -1532,24 +1614,33 @@ Using the publish command
 ``sops publish $file`` publishes a file to a pre-configured destination (this lives in the SOPS
 config file). Additionally, support re-encryption rules that work just like the creation rules.
 
-This command requires a ``.sops.yaml`` configuration file. Below is an example:
+This command requires a ``.sops.pxf`` configuration file. Below is an example:
 
-.. code:: yaml
+.. code:: pxf
 
-    destination_rules:
-        - s3_bucket: "sops-secrets"
-          path_regex: s3/*
-          recreation_rule:
-              pgp: F69E4901EDBAD2D1753F8C67A64535C4163FB307
-        - gcs_bucket: "sops-secrets"
-          path_regex: gcs/*
-          recreation_rule:
-              pgp: F69E4901EDBAD2D1753F8C67A64535C4163FB307
-        - vault_path: "sops/"
-          vault_kv_mount_name: "secret/" # default
-          vault_kv_version: 2 # default
-          path_regex: vault/*
-          omit_extensions: true
+    destination_rules = [
+      {
+        s3_bucket = "sops-secrets"
+        path_regex = "s3/*"
+        recreation_rule {
+          pgp = ["F69E4901EDBAD2D1753F8C67A64535C4163FB307"]
+        }
+      },
+      {
+        gcs_bucket = "sops-secrets"
+        path_regex = "gcs/*"
+        recreation_rule {
+          pgp = ["F69E4901EDBAD2D1753F8C67A64535C4163FB307"]
+        }
+      },
+      {
+        vault_path = "sops/"
+        vault_kv_mount_name = "secret/"  # default
+        vault_kv_version = 2             # default
+        path_regex = "vault/*"
+        omit_extensions = true
+      }
+    ]
 
 The above configuration will place all files under ``s3/*`` into the S3 bucket ``sops-secrets``,
 all files under ``gcs/*`` into the GCS bucket ``sops-secrets``, and the contents of all files under
@@ -1562,7 +1653,7 @@ You would deploy a file to S3 with a command like: ``sops publish s3/app.yaml``
 To publish all files in selected directory recursively, you need to specify ``--recursive`` flag.
 
 If you don't want file extension to appear in destination secret path, use ``--omit-extensions``
-flag or ``omit_extensions: true`` in the destination rule in ``.sops.yaml``.
+flag or ``omit_extensions = true`` in the destination rule in ``.sops.pxf``.
 
 Publishing to Vault
 *******************
@@ -1651,30 +1742,35 @@ JSON and JSON_binary indentation
 
 SOPS indents ``JSON`` files by default using one ``tab``. However, you can change
 this default behaviour to use ``spaces`` by either using the additional ``--indent=2`` CLI option or
-by configuring ``.sops.yaml`` with the code below.
+by configuring ``.sops.pxf`` with the code below.
 
 The special value ``0`` disables indentation, and ``-1`` uses a single tab.
 
-.. code:: yaml
+.. code:: pxf
 
-  stores:
-      json:
-          indent: 2
-      json_binary:
-          indent: 2
+  stores {
+    json {
+      indent = 2
+    }
+    json_binary {
+      indent = 2
+    }
+  }
 
 YAML indentation
 ~~~~~~~~~~~~~~~~
 
 SOPS indents ``YAML`` files by default using 4 spaces. However, you can change
 this default behaviour by either using the additional ``--indent=2`` CLI option or
-by configuring ``.sops.yaml`` with:
+by configuring ``.sops.pxf`` with:
 
-.. code:: yaml
+.. code:: pxf
 
-  stores:
-      yaml:
-          indent: 2
+  stores {
+    yaml {
+      indent = 2
+    }
+  }
 
 .. note::
 
@@ -2025,7 +2121,7 @@ to any key of a file. When set, all values underneath the key that set the
 Note that, while in cleartext, unencrypted content is still added to the
 checksum of the file, and thus cannot be modified outside of SOPS without
 breaking the file integrity check.
-This behavior can be modified using ``--mac-only-encrypted`` flag or ``.sops.yaml``
+This behavior can be modified using ``--mac-only-encrypted`` flag or ``.sops.pxf``
 config file which makes SOPS compute a MAC only over values it encrypted and
 not all values.
 
@@ -2066,7 +2162,7 @@ Conversely, you can opt in to only left certain keys without encrypting by using
 unencrypted when they have a preeceding comment, or a trailing comment on the same line,
 that matches the supplied regular expression.
 
-You can also specify these options in the ``.sops.yaml`` config file.
+You can also specify these options in the ``.sops.pxf`` config file.
 
 Note: these six options ``--unencrypted-suffix``, ``--encrypted-suffix``, ``--encrypted-regex``,
 ``--unencrypted-regex``, ``--encrypted-comment-regex``, and ``--unencrypted-comment-regex`` are
@@ -2076,14 +2172,19 @@ Config file format
 ------------------
 
 This section describes the format of the SOPS config file.
-The file must be named ``.sops.yaml`` (not ``.sops.yml``!),
+The file must be named ``.sops.pxf``,
 and SOPS will look for it in the current working directory and its parents,
-using the first ``.sops.yaml`` file found.
+using the first ``.sops.pxf`` file found. The legacy YAML config
+(``.sops.yaml`` / ``.sops.yml``) is no longer loaded; SOPS warns and ignores it
+if it finds one while searching.
 
 A specific file can be set as the config file by passing the ``--config`` global option
 or setting the ``SOPS_CONFIG`` environment variable.
 
-The config file must be in the `YAML format <https://yaml.org/>`__.
+The config file must be in `PXF (protowire text format)`_ (see the section of that
+name above for the syntax). Every top-level key and rule field below maps directly to
+a field in the ``sops.config.ConfigFile`` schema (`config/configpb/config.proto
+<config/configpb/config.proto>`_).
 
 The following top-level keys are supported:
 
@@ -2118,75 +2219,99 @@ If a list of key groups is given, the individual settings are ignored.
 
 To directly specify a single key group, you can use the following keys:
 
-* ``kms`` (comma-separated string, or list of strings): list of AWS master keys.
+* ``kms`` (list of strings): list of AWS master keys.
 * ``aws_profile`` (string): AWS profile to use for the AWS KMS keys.
   Example:
 
-  .. code:: yaml
+  .. code:: pxf
 
-    creation_rules:
-      - kms:
-          - arn:aws:kms:us-east-1:656532927350:key/920aff2e-c5f1-4040-943a-047fa387b27e
-          - arn:aws:kms:ap-southeast-1:656532927350:key/9006a8aa-0fa6-4c14-930e-a2dfb916de1d
-        aws_profile: foo
+    creation_rules = [
+      {
+        kms = [
+          "arn:aws:kms:us-east-1:656532927350:key/920aff2e-c5f1-4040-943a-047fa387b27e",
+          "arn:aws:kms:ap-southeast-1:656532927350:key/9006a8aa-0fa6-4c14-930e-a2dfb916de1d"
+        ]
+        aws_profile = "foo"
+      }
+    ]
 
-* ``age`` (comma-separated string, or list of strings): list of Age public keys.
+* ``age`` (list of strings): list of Age public keys.
   Example:
 
-  .. code:: yaml
+  .. code:: pxf
 
-    creation_rules:
-      - age:
-          - age1s3cqcks5genc6ru8chl0hkkd04zmxvczsvdxq99ekffe4gmvjpzsedk23c
-          - age1qe5lxzzeppw5k79vxn3872272sgy224g2nzqlzy3uljs84say3yqgvd0sw
+    creation_rules = [
+      {
+        age = [
+          "age1s3cqcks5genc6ru8chl0hkkd04zmxvczsvdxq99ekffe4gmvjpzsedk23c",
+          "age1qe5lxzzeppw5k79vxn3872272sgy224g2nzqlzy3uljs84say3yqgvd0sw"
+        ]
+      }
+    ]
 
-* ``pgp`` (comma-separated string, or list of strings): list of PGP/GPG key fingerprints.
+* ``pgp`` (list of strings): list of PGP/GPG key fingerprints.
   Example:
 
-  .. code:: yaml
+  .. code:: pxf
 
-    creation_rules:
-      - pgp:
-          - 85D77543B3D624B63CEA9E6DBC17301B491B3F21!
-          - E60892BB9BD89A69F759A1A0A3D652173B763E8F!
+    creation_rules = [
+      {
+        pgp = [
+          "85D77543B3D624B63CEA9E6DBC17301B491B3F21!",
+          "E60892BB9BD89A69F759A1A0A3D652173B763E8F!"
+        ]
+      }
+    ]
 
-* ``gcp_kms`` (comma-separated string, or list of strings): list of GCP KMS ResourceIDs.
+* ``gcp_kms`` (list of strings): list of GCP KMS ResourceIDs.
   Example:
 
-  .. code:: yaml
+  .. code:: pxf
 
-    creation_rules:
-      - gcp_kms:
-          - projects/mygcproject/locations/global/keyRings/mykeyring/cryptoKeys/thekey
+    creation_rules = [
+      {
+        gcp_kms = ["projects/mygcproject/locations/global/keyRings/mykeyring/cryptoKeys/thekey"]
+      }
+    ]
 
-* ``azure_keyvault`` (comma-separated string, or list of strings): list of Azure Key Vault resource identifiers.
+* ``azure_keyvault`` (list of strings): list of Azure Key Vault resource identifiers.
   Example:
 
-  .. code:: yaml
+  .. code:: pxf
 
-    creation_rules:
-      - azure_keyvault:
-          - https://vault.url/keys/key-name/key-version  # Key with version
-          - https://vault.url/keys/key-name/             # key without version, the latest will be used
+    creation_rules = [
+      {
+        azure_keyvault = [
+          "https://vault.url/keys/key-name/key-version",  # Key with version
+          "https://vault.url/keys/key-name/"              # key without version, the latest will be used
+        ]
+      }
+    ]
 
-* ``hc_vault_transit_uri`` (comma-separated string, or list of strings): list of HashiCorp Vault transit URIs.
+* ``hc_vault_transit_uri`` (list of strings): list of HashiCorp Vault transit URIs.
   Example:
 
-  .. code:: yaml
+  .. code:: pxf
 
-    creation_rules:
-      - hc_vault_transit_uri:
-          - http://my.vault/v1/sops/keys/secondkey
+    creation_rules = [
+      {
+        hc_vault_transit_uri = ["http://my.vault/v1/sops/keys/secondkey"]
+      }
+    ]
 
 * ``hckms`` (list of strings): list of HuaweiCloud KMS key IDs (format: ``<region>:<key-uuid>``).
   Example:
 
-  .. code:: yaml
+  .. code:: pxf
 
-    creation_rules:
-      - hckms:
-          - tr-west-1:abc12345-6789-0123-4567-890123456789
-          - tr-west-1:def67890-1234-5678-9012-345678901234
+    creation_rules = [
+      {
+        hckms = [
+          "tr-west-1:abc12345-6789-0123-4567-890123456789",
+          "tr-west-1:def67890-1234-5678-9012-345678901234"
+        ]
+      }
+    ]
 
 To specify a list of key groups, you can use the following key:
 
@@ -2194,39 +2319,67 @@ To specify a list of key groups, you can use the following key:
   See below for how such a resource should be represented.
   Example:
 
-  .. code:: yaml
+  .. code:: pxf
 
-    creation_rules:
-      - key_groups:
-          - kms:
-              - arn:aws:kms:us-east-1:656532927350:key/920aff2e-c5f1-4040-943a-047fa387b27e
-              - arn:aws:kms:ap-southeast-1:656532927350:key/9006a8aa-0fa6-4c14-930e-a2dfb916de1d
-            aws_profile: foo
-            age:
-              - age1s3cqcks5genc6ru8chl0hkkd04zmxvczsvdxq99ekffe4gmvjpzsedk23c
-              - age1qe5lxzzeppw5k79vxn3872272sgy224g2nzqlzy3uljs84say3yqgvd0sw
-            pgp:
-              - 85D77543B3D624B63CEA9E6DBC17301B491B3F21!
-              - E60892BB9BD89A69F759A1A0A3D652173B763E8F!
-            gcp_kms:
-              - projects/mygcproject/locations/global/keyRings/mykeyring/cryptoKeys/thekey
-            azure_keyvault:
-              - https://vault.url/keys/key-name/key-version  # Key with version
-              - https://vault.url/keys/key-name/             # key without version, the latest will be used
-            hc_vault_transit_uri:
-              - http://my.vault/v1/sops/keys/secondkey
-            hckms:
-              - tr-west-1:abc12345-6789-0123-4567-890123456789
-
-            merge:
-              - pgp:
-                  - 85D77543B3D624B63CEA9E6DBC17301B491B3F21!
-              - age:
-                  - age1s3cqcks5genc6ru8chl0hkkd04zmxvczsvdxq99ekffe4gmvjpzsedk23c
-              - gcp_kms:
-                  - projects/mygcproject/locations/global/keyRings/mykeyring/cryptoKeys/thekey
-                azure_keyvault:
-                  - https://vault.url/keys/key-name/key-version
+    creation_rules = [
+      {
+        key_groups = [
+          {
+            kms = [
+              {
+                arn = "arn:aws:kms:us-east-1:656532927350:key/920aff2e-c5f1-4040-943a-047fa387b27e"
+                aws_profile = "foo"
+              },
+              {
+                arn = "arn:aws:kms:ap-southeast-1:656532927350:key/9006a8aa-0fa6-4c14-930e-a2dfb916de1d"
+              }
+            ]
+            age = [
+              "age1s3cqcks5genc6ru8chl0hkkd04zmxvczsvdxq99ekffe4gmvjpzsedk23c",
+              "age1qe5lxzzeppw5k79vxn3872272sgy224g2nzqlzy3uljs84say3yqgvd0sw"
+            ]
+            pgp = [
+              "85D77543B3D624B63CEA9E6DBC17301B491B3F21!",
+              "E60892BB9BD89A69F759A1A0A3D652173B763E8F!"
+            ]
+            gcp_kms = [
+              { resource_id = "projects/mygcproject/locations/global/keyRings/mykeyring/cryptoKeys/thekey" }
+            ]
+            azure_keyvault = [
+              {
+                vault_url = "https://vault.url"
+                key = "key-name"
+                version = "key-version"
+              }
+            ]
+            hc_vault = ["http://my.vault/v1/sops/keys/secondkey"]
+            hckms = [
+              { key_id = "tr-west-1:abc12345-6789-0123-4567-890123456789" }
+            ]
+            merge = [
+              {
+                pgp = ["85D77543B3D624B63CEA9E6DBC17301B491B3F21!"]
+              },
+              {
+                age = ["age1s3cqcks5genc6ru8chl0hkkd04zmxvczsvdxq99ekffe4gmvjpzsedk23c"]
+              },
+              {
+                gcp_kms = [
+                  { resource_id = "projects/mygcproject/locations/global/keyRings/mykeyring/cryptoKeys/thekey" }
+                ]
+                azure_keyvault = [
+                  {
+                    vault_url = "https://vault.url"
+                    key = "key-name"
+                    version = "key-version"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
 
 Key group object
 ++++++++++++++++
@@ -2251,14 +2404,19 @@ A key group supports the following keys:
 
   Example:
 
-  .. code:: yaml
+  .. code:: pxf
 
-    - arn: arn:aws:kms:us-west-2:927034868273:key/fe86dd69-4132-404c-ab86-4269956b4500
-      role: arn:aws:iam::927034868273:role/sops-dev-xyz
-      context:
-        Environment: production
-        Role: web-server
-      aws_profile: foo
+    kms = [
+      {
+        arn = "arn:aws:kms:us-west-2:927034868273:key/fe86dd69-4132-404c-ab86-4269956b4500"
+        role = "arn:aws:iam::927034868273:role/sops-dev-xyz"
+        context = {
+          Environment: "production"
+          Role: "web-server"
+        }
+        aws_profile = "foo"
+      }
+    ]
 
 * ``gcp_kms`` (list of objects): list of GCP KMS resource IDs.
   Every object must have the following key:
@@ -2267,14 +2425,16 @@ A key group supports the following keys:
 
   Example:
 
-  .. code:: yaml
+  .. code:: pxf
 
-    - resource_id: projects/mygcproject/locations/global/keyRings/mykeyring/cryptoKeys/thekey
+    gcp_kms = [
+      { resource_id = "projects/mygcproject/locations/global/keyRings/mykeyring/cryptoKeys/thekey" }
+    ]
 
 * ``azure_keyvault`` (list of objects): list of Azure Key Vault resource identifiers.
   Every object must have the following keys:
 
-  * ``vaultUrl`` (string): the vault URL.
+  * ``vault_url`` (string): the vault URL.
 
   * ``key`` (string): the key name.
 
@@ -2283,14 +2443,20 @@ A key group supports the following keys:
 
   Example:
 
-  .. code:: yaml
+  .. code:: pxf
 
-    - vaultUrl: https://vault.url
-      key: key-name
-      version: key-version
-    - vaultUrl: https://vault.url
-      key: key-name
-      version: ""
+    azure_keyvault = [
+      {
+        vault_url = "https://vault.url"
+        key = "key-name"
+        version = "key-version"
+      },
+      {
+        vault_url = "https://vault.url"
+        key = "key-name"
+        version = ""
+      }
+    ]
 
 * ``hc_vault`` (list of strings): list of HashiCorp Vault transit URIs.
 
@@ -2301,9 +2467,11 @@ A key group supports the following keys:
 
   Example:
 
-  .. code:: yaml
+  .. code:: pxf
 
-    - key_id: tr-west-1:abc12345-6789-0123-4567-890123456789
+    hckms = [
+      { key_id = "tr-west-1:abc12345-6789-0123-4567-890123456789" }
+    ]
 
 * ``age`` (list of strings): list of Age public keys.
 
@@ -2311,7 +2479,7 @@ A key group supports the following keys:
 
 * ``merge``: a list of key group objects.
   These will be merged (by concatenating the keys of the same type) into this key group.
-  This property allows for the concatenation of key groups using YAML anchors, aliases, and overrides.
+  This property allows a key group to be assembled from several smaller groups.
 
 Settings
 ********
@@ -2541,7 +2709,7 @@ In addition to authenticating branches of the tree using keys as additional
 data, SOPS computes a MAC on all the values to ensure that no value has been
 added or removed fraudulently. The MAC is stored encrypted with AES_GCM and
 the data key under tree -> ``sops`` -> ``mac``.
-This behavior can be modified using ``--mac-only-encrypted`` flag or ``.sops.yaml``
+This behavior can be modified using ``--mac-only-encrypted`` flag or ``.sops.pxf``
 config file which makes SOPS compute a MAC only over values it encrypted and
 not all values.
 

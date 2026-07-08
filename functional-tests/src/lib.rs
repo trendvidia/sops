@@ -1221,7 +1221,7 @@ b: 2006-01-02T15:04:05+07:06
 
     #[test]
     fn roundtrip_shamir() {
-        // The .sops.yaml file ensures this file is encrypted with two key groups, each with one GPG key
+        // The .sops.pxf file ensures this file is encrypted with two key groups, each with one GPG key
         let file_path = prepare_temp_file("test_roundtrip_keygroups.yaml", "a: secret".as_bytes());
         let output = Command::new(SOPS_BINARY_PATH)
             .arg("encrypt")
@@ -1247,7 +1247,7 @@ b: 2006-01-02T15:04:05+07:06
 
     #[test]
     fn roundtrip_shamir_missing_decryption_key() {
-        // The .sops.yaml file ensures this file is encrypted with two key groups, each with one GPG key,
+        // The .sops.pxf file ensures this file is encrypted with two key groups, each with one GPG key,
         // but we don't have one of the private keys
         let file_path = prepare_temp_file(
             "test_roundtrip_keygroups_missing_decryption_key.yaml",
@@ -1293,7 +1293,7 @@ b: 2006-01-02T15:04:05+07:06
 
     #[test]
     fn test_no_keygroups() {
-        // The .sops.yaml file ensures this file is encrypted by zero keygroups
+        // The .sops.pxf file ensures this file is encrypted by zero keygroups
         let file_path = prepare_temp_file("test_no_keygroups.yaml", "a: secret".as_bytes());
         let output = Command::new(SOPS_BINARY_PATH)
             .arg("encrypt")
@@ -1313,7 +1313,7 @@ b: 2006-01-02T15:04:05+07:06
 
     #[test]
     fn test_zero_keygroups() {
-        // The .sops.yaml file ensures this file is encrypted by zero keygroups
+        // The .sops.pxf file ensures this file is encrypted by zero keygroups
         let file_path = prepare_temp_file("test_zero_keygroups.yaml", "a: secret".as_bytes());
         let output = Command::new(SOPS_BINARY_PATH)
             .arg("encrypt")
@@ -1333,7 +1333,7 @@ b: 2006-01-02T15:04:05+07:06
 
     #[test]
     fn test_empty_keygroup() {
-        // The .sops.yaml file ensures this file is encrypted by zero keygroups
+        // The .sops.pxf file ensures this file is encrypted by zero keygroups
         let file_path = prepare_temp_file("test_empty_keygroup.yaml", "a: secret".as_bytes());
         let output = Command::new(SOPS_BINARY_PATH)
             .arg("encrypt")
