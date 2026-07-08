@@ -1,5 +1,50 @@
 # Changelog
 
+## 4.1.0
+
+Feature release centered on migrating the sops configuration file from
+YAML to PXF, plus richer age key-source errors and a dependency bump.
+
+**BREAKING (on-disk config format).** The sops configuration file is now
+PXF (`.sops.pxf`); the legacy YAML config (`.sops.yaml` / `.sops.yml`) is
+no longer loaded. When SOPS encounters a legacy YAML config while
+searching, it warns and ignores it. The Go module's exported API is
+unchanged (`config.LoadCreationRuleForFile` and friends still work), so
+the import path stays `github.com/trendvidia/sops/v4`. Convert an
+existing config with the new `sops config migrate` command.
+
+* **Configuration file migrated from YAML to PXF.** `.sops.pxf` is now
+  the only config format loaded. A new `sops.config` protobuf schema
+  (`config/configpb/config.proto`) mirrors the config layout; the loader
+  parses PXF via `pxf.Unmarshal` and translates into the same internal
+  structures, so downstream behavior is unchanged. The repo's own
+  configs, the config test fixtures, and the README examples were all
+  converted. PR #45.
+
+* **New `sops config migrate` command.** Converts a legacy `.sops.yaml`
+  into the equivalent `.sops.pxf` (`--in` / `--out` / `--in-place`). It
+  normalizes the YAML scalar-or-CSV key shorthand into PXF lists and
+  **warns** about fields the YAML loader silently ignored (for example
+  the historical `hc_vault_uris` and `reencryption_rule` typos) rather
+  than dropping them without a trace. PR #49.
+
+* **Config internals simplified.** With PXF as the only source, the
+  internal config structs shed their vestigial YAML struct tags and the
+  `interface{}` "string or list" key fields become plain `[]string`,
+  removing the `parseKeyField` / `GetXxxKeys` machinery. No behavior
+  change. PR #49.
+
+* **CI verifies generated protobuf is up to date.** The CLI workflow now
+  runs `make generate` and fails on a dirty tree, so the `.pb.go` files
+  cannot drift from their `.proto` sources. PR #49.
+
+* **Typed errors for age key-source failures.** Age key-source
+  resolution now returns typed errors, letting embedders distinguish
+  key-source failure modes programmatically. PR #44.
+
+* **Dependency bumps.** `golang.org/x/net` to v0.55.0 and `runc` to
+  v1.3.6. PR #43.
+
 ## 4.0.2
 
 Patch release with a single crash fix.
