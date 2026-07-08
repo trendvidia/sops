@@ -26,6 +26,7 @@ import (
 	"github.com/trendvidia/sops/v4/azkv"
 	"github.com/trendvidia/sops/v4/cmd/sops/codes"
 	"github.com/trendvidia/sops/v4/cmd/sops/common"
+	configmigratecmd "github.com/trendvidia/sops/v4/cmd/sops/subcommand/configmigrate"
 	"github.com/trendvidia/sops/v4/cmd/sops/subcommand/exec"
 	filestatuscmd "github.com/trendvidia/sops/v4/cmd/sops/subcommand/filestatus"
 	"github.com/trendvidia/sops/v4/cmd/sops/subcommand/groups"
@@ -508,6 +509,77 @@ func main() {
 					return err
 				}
 				return nil
+			},
+		},
+		{
+			Name:  "config",
+			Usage: "operate on sops configuration files",
+			Subcommands: []cli.Command{
+				{
+					Name:      "migrate",
+					Usage:     "convert a legacy YAML sops config (.sops.yaml) to PXF (.sops.pxf)",
+					ArgsUsage: `[file]`,
+					Flags: []cli.Flag{
+						cli.StringFlag{
+							Name:  "in",
+							Usage: "path to the YAML config to read; defaults to the positional argument, then .sops.yaml/.sops.yml in the current directory",
+						},
+						cli.StringFlag{
+							Name:  "out",
+							Usage: "path to write the PXF config to; defaults to stdout",
+						},
+						cli.BoolFlag{
+							Name:  "in-place, i",
+							Usage: "write the result to .sops.pxf alongside the input file",
+						},
+					},
+					Action: func(c *cli.Context) error {
+						inPath := c.String("in")
+						if inPath == "" && c.NArg() > 0 {
+							inPath = c.Args()[0]
+						}
+						if inPath == "" {
+							for _, name := range []string{".sops.yaml", ".sops.yml"} {
+								if _, err := os.Stat(name); err == nil {
+									inPath = name
+									break
+								}
+							}
+						}
+						if inPath == "" {
+							return common.NewExitError("no YAML config found; specify one with --in or a positional argument", codes.ConfigFileNotFound)
+						}
+
+						data, err := os.ReadFile(inPath)
+						if err != nil {
+							return common.NewExitError(fmt.Sprintf("could not read %q: %s", inPath, err), codes.CouldNotReadInputFile)
+						}
+
+						pxfBytes, warnings, err := configmigratecmd.ConvertYAML(data)
+						if err != nil {
+							return common.NewExitError(fmt.Sprintf("could not convert %q: %s", inPath, err), codes.ErrorReadingConfig)
+						}
+						for _, w := range warnings {
+							log.Warnf("%s: %s", inPath, w)
+						}
+
+						outPath := c.String("out")
+						if c.Bool("in-place") {
+							outPath = filepath.Join(filepath.Dir(inPath), ".sops.pxf")
+						}
+						if outPath == "" {
+							if _, err := os.Stdout.Write(pxfBytes); err != nil {
+								return common.NewExitError(fmt.Sprintf("could not write output: %s", err), codes.CouldNotWriteOutputFile)
+							}
+							return nil
+						}
+						if err := os.WriteFile(outPath, pxfBytes, 0o644); err != nil {
+							return common.NewExitError(fmt.Sprintf("could not write %q: %s", outPath, err), codes.CouldNotWriteOutputFile)
+						}
+						log.Infof("wrote %s", outPath)
+						return nil
+					},
+				},
 			},
 		},
 		{

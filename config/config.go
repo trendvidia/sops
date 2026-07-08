@@ -112,162 +112,99 @@ type DotenvStoreConfig struct{}
 type INIStoreConfig struct{}
 
 type JSONStoreConfig struct {
-	Indent int `yaml:"indent"`
+	Indent int
 }
 
 type JSONBinaryStoreConfig struct {
-	Indent int `yaml:"indent"`
+	Indent int
 }
 
 type YAMLStoreConfig struct {
-	Indent int `yaml:"indent"`
+	Indent int
 }
 
 type ProtowireStoreConfig struct{}
 
 type StoresConfig struct {
-	Dotenv     DotenvStoreConfig     `yaml:"dotenv"`
-	INI        INIStoreConfig        `yaml:"ini"`
-	JSONBinary JSONBinaryStoreConfig `yaml:"json_binary"`
-	JSON       JSONStoreConfig       `yaml:"json"`
-	YAML       YAMLStoreConfig       `yaml:"yaml"`
-	Protowire  ProtowireStoreConfig  `yaml:"protowire"`
+	Dotenv     DotenvStoreConfig
+	INI        INIStoreConfig
+	JSONBinary JSONBinaryStoreConfig
+	JSON       JSONStoreConfig
+	YAML       YAMLStoreConfig
+	Protowire  ProtowireStoreConfig
 }
 
 type configFile struct {
-	CreationRules    []creationRule    `yaml:"creation_rules"`
-	DestinationRules []destinationRule `yaml:"destination_rules"`
-	Stores           StoresConfig      `yaml:"stores"`
+	CreationRules    []creationRule
+	DestinationRules []destinationRule
+	Stores           StoresConfig
 }
 
 type keyGroup struct {
-	Merge   []keyGroup   `yaml:"merge"`
-	KMS     []kmsKey     `yaml:"kms"`
-	GCPKMS  []gcpKmsKey  `yaml:"gcp_kms"`
-	HCKms   []hckmsKey   `yaml:"hckms"`
-	AzureKV []azureKVKey `yaml:"azure_keyvault"`
-	Vault   []string     `yaml:"hc_vault"`
-	Age     []string     `yaml:"age"`
-	PGP     []string     `yaml:"pgp"`
+	Merge   []keyGroup
+	KMS     []kmsKey
+	GCPKMS  []gcpKmsKey
+	HCKms   []hckmsKey
+	AzureKV []azureKVKey
+	Vault   []string
+	Age     []string
+	PGP     []string
 }
 
 type gcpKmsKey struct {
-	ResourceID string `yaml:"resource_id"`
+	ResourceID string
 }
 
 type kmsKey struct {
-	Arn        string             `yaml:"arn"`
-	Role       string             `yaml:"role,omitempty"`
-	Context    map[string]*string `yaml:"context"`
-	AwsProfile string             `yaml:"aws_profile"`
+	Arn        string
+	Role       string
+	Context    map[string]*string
+	AwsProfile string
 }
 
 type azureKVKey struct {
-	VaultURL string `yaml:"vaultUrl"`
-	Key      string `yaml:"key"`
-	Version  string `yaml:"version"`
+	VaultURL string
+	Key      string
+	Version  string
 }
 
 type hckmsKey struct {
-	KeyID string `yaml:"key_id"`
+	KeyID string
 }
 
 type destinationRule struct {
-	PathRegex        string       `yaml:"path_regex"`
-	S3Bucket         string       `yaml:"s3_bucket"`
-	S3Prefix         string       `yaml:"s3_prefix"`
-	GCSBucket        string       `yaml:"gcs_bucket"`
-	GCSPrefix        string       `yaml:"gcs_prefix"`
-	VaultPath        string       `yaml:"vault_path"`
-	VaultAddress     string       `yaml:"vault_address"`
-	VaultKVMountName string       `yaml:"vault_kv_mount_name"`
-	VaultKVVersion   int          `yaml:"vault_kv_version"`
-	RecreationRule   creationRule `yaml:"recreation_rule,omitempty"`
-	OmitExtensions   bool         `yaml:"omit_extensions"`
+	PathRegex        string
+	S3Bucket         string
+	S3Prefix         string
+	GCSBucket        string
+	GCSPrefix        string
+	VaultPath        string
+	VaultAddress     string
+	VaultKVMountName string
+	VaultKVVersion   int
+	RecreationRule   creationRule
+	OmitExtensions   bool
 }
 
 type creationRule struct {
-	PathRegex               string      `yaml:"path_regex"`
-	KMS                     interface{} `yaml:"kms"` // string or []string
-	AwsProfile              string      `yaml:"aws_profile"`
-	Age                     interface{} `yaml:"age"`     // string or []string
-	PGP                     interface{} `yaml:"pgp"`     // string or []string
-	GCPKMS                  interface{} `yaml:"gcp_kms"` // string or []string
-	HCKms                   []string    `yaml:"hckms"`
-	AzureKeyVault           interface{} `yaml:"azure_keyvault"`       // string or []string
-	VaultURI                interface{} `yaml:"hc_vault_transit_uri"` // string or []string
-	KeyGroups               []keyGroup  `yaml:"key_groups"`
-	ShamirThreshold         int         `yaml:"shamir_threshold"`
-	UnencryptedSuffix       string      `yaml:"unencrypted_suffix"`
-	EncryptedSuffix         string      `yaml:"encrypted_suffix"`
-	UnencryptedRegex        string      `yaml:"unencrypted_regex"`
-	EncryptedRegex          string      `yaml:"encrypted_regex"`
-	UnencryptedCommentRegex string      `yaml:"unencrypted_comment_regex"`
-	EncryptedCommentRegex   string      `yaml:"encrypted_comment_regex"`
-	MACOnlyEncrypted        bool        `yaml:"mac_only_encrypted"`
-}
-
-// Helper methods to safely extract keys as []string
-func (c *creationRule) GetKMSKeys() ([]string, error) {
-	return parseKeyField(c.KMS, "kms")
-}
-
-func (c *creationRule) GetAgeKeys() ([]string, error) {
-	return parseKeyField(c.Age, "age")
-}
-
-func (c *creationRule) GetPGPKeys() ([]string, error) {
-	return parseKeyField(c.PGP, "pgp")
-}
-
-func (c *creationRule) GetGCPKMSKeys() ([]string, error) {
-	return parseKeyField(c.GCPKMS, "gcp_kms")
-}
-
-func (c *creationRule) GetAzureKeyVaultKeys() ([]string, error) {
-	return parseKeyField(c.AzureKeyVault, "azure_keyvault")
-}
-
-func (c *creationRule) GetVaultURIs() ([]string, error) {
-	return parseKeyField(c.VaultURI, "hc_vault_transit_uri")
-}
-
-// Utility function to handle both string and []string
-func parseKeyField(field interface{}, fieldName string) ([]string, error) {
-	if field == nil {
-		return []string{}, nil
-	}
-
-	switch v := field.(type) {
-	case string:
-		if v == "" {
-			return []string{}, nil
-		}
-		// Existing CSV parsing logic
-		keys := strings.Split(v, ",")
-		result := make([]string, 0, len(keys))
-		for _, key := range keys {
-			trimmed := strings.TrimSpace(key)
-			if trimmed != "" { // Skip empty strings (fixes trailing comma issue)
-				result = append(result, trimmed)
-			}
-		}
-		return result, nil
-	case []interface{}:
-		result := make([]string, len(v))
-		for i, item := range v {
-			if str, ok := item.(string); ok {
-				result[i] = str
-			} else {
-				return nil, fmt.Errorf("invalid %s key configuration: expected string in list, got %T", fieldName, item)
-			}
-		}
-		return result, nil
-	case []string:
-		return v, nil
-	default:
-		return nil, fmt.Errorf("invalid %s key configuration: expected string, []string, or nil, got %T", fieldName, field)
-	}
+	PathRegex               string
+	KMS                     []string
+	AwsProfile              string
+	Age                     []string
+	PGP                     []string
+	GCPKMS                  []string
+	HCKms                   []string
+	AzureKeyVault           []string
+	VaultURI                []string
+	KeyGroups               []keyGroup
+	ShamirThreshold         int
+	UnencryptedSuffix       string
+	EncryptedSuffix         string
+	UnencryptedRegex        string
+	EncryptedRegex          string
+	UnencryptedCommentRegex string
+	EncryptedCommentRegex   string
+	MACOnlyEncrypted        bool
 }
 
 func NewStoresConfig() *StoresConfig {
@@ -306,14 +243,14 @@ func creationRulesFromProto(pbRules []*configpb.CreationRule) []creationRule {
 func creationRuleFromProto(r *configpb.CreationRule) creationRule {
 	return creationRule{
 		PathRegex:               r.GetPathRegex(),
-		KMS:                     strsOrNil(r.GetKms()),
+		KMS:                     r.GetKms(),
 		AwsProfile:              r.GetAwsProfile(),
-		Age:                     strsOrNil(r.GetAge()),
-		PGP:                     strsOrNil(r.GetPgp()),
-		GCPKMS:                  strsOrNil(r.GetGcpKms()),
+		Age:                     r.GetAge(),
+		PGP:                     r.GetPgp(),
+		GCPKMS:                  r.GetGcpKms(),
 		HCKms:                   r.GetHckms(),
-		AzureKeyVault:           strsOrNil(r.GetAzureKeyvault()),
-		VaultURI:                strsOrNil(r.GetHcVaultTransitUri()),
+		AzureKeyVault:           r.GetAzureKeyvault(),
+		VaultURI:                r.GetHcVaultTransitUri(),
 		KeyGroups:               keyGroupsFromProto(r.GetKeyGroups()),
 		ShamirThreshold:         int(r.GetShamirThreshold()),
 		UnencryptedSuffix:       r.GetUnencryptedSuffix(),
@@ -412,16 +349,6 @@ func applyStoresConfig(dst *StoresConfig, pb *configpb.StoresConfig) {
 	if y := pb.GetYaml(); y != nil && y.Indent != nil {
 		dst.YAML.Indent = int(y.GetIndent())
 	}
-}
-
-// strsOrNil returns nil for an empty slice so that an unset repeated key
-// field lands in the creationRule's interface{} slot as a nil interface
-// (matching the pre-PXF YAML behavior), rather than a typed empty slice.
-func strsOrNil(s []string) interface{} {
-	if len(s) == 0 {
-		return nil
-	}
-	return s
 }
 
 // stringPtrMap converts a proto map<string,string> into the map[string]*string
@@ -523,14 +450,6 @@ func extractMasterKeys(group keyGroup) (sops.KeyGroup, error) {
 	return deduplicateKeygroup(keyGroup), nil
 }
 
-func getKeysWithValidation(getKeysFunc func() ([]string, error), keyType string) ([]string, error) {
-	keys, err := getKeysFunc()
-	if err != nil {
-		return nil, fmt.Errorf("invalid %s key configuration: %w", keyType, err)
-	}
-	return keys, nil
-}
-
 func getKeyGroupsFromCreationRule(cRule *creationRule, kmsEncryptionContext map[string]*string) ([]sops.KeyGroup, error) {
 	var groups []sops.KeyGroup
 	if len(cRule.KeyGroups) > 0 {
@@ -543,40 +462,22 @@ func getKeyGroupsFromCreationRule(cRule *creationRule, kmsEncryptionContext map[
 		}
 	} else {
 		var keyGroup sops.KeyGroup
-		ageKeys, err := getKeysWithValidation(cRule.GetAgeKeys, "age")
-		if err != nil {
-			return nil, err
-		}
-
-		if len(ageKeys) > 0 {
-			ageKeys, err := age.MasterKeysFromRecipients(strings.Join(ageKeys, ","))
+		if len(cRule.Age) > 0 {
+			ageKeys, err := age.MasterKeysFromRecipients(strings.Join(cRule.Age, ","))
 			if err != nil {
 				return nil, err
-			} else {
-				for _, ak := range ageKeys {
-					keyGroup = append(keyGroup, ak)
-				}
+			}
+			for _, ak := range ageKeys {
+				keyGroup = append(keyGroup, ak)
 			}
 		}
-		pgpKeys, err := getKeysWithValidation(cRule.GetPGPKeys, "pgp")
-		if err != nil {
-			return nil, err
-		}
-		for _, k := range pgp.MasterKeysFromFingerprintString(strings.Join(pgpKeys, ",")) {
+		for _, k := range pgp.MasterKeysFromFingerprintString(strings.Join(cRule.PGP, ",")) {
 			keyGroup = append(keyGroup, k)
 		}
-		kmsKeys, err := getKeysWithValidation(cRule.GetKMSKeys, "kms")
-		if err != nil {
-			return nil, err
-		}
-		for _, k := range kms.MasterKeysFromArnString(strings.Join(kmsKeys, ","), kmsEncryptionContext, cRule.AwsProfile) {
+		for _, k := range kms.MasterKeysFromArnString(strings.Join(cRule.KMS, ","), kmsEncryptionContext, cRule.AwsProfile) {
 			keyGroup = append(keyGroup, k)
 		}
-		gcpkmsKeys, err := getKeysWithValidation(cRule.GetGCPKMSKeys, "gcpkms")
-		if err != nil {
-			return nil, err
-		}
-		for _, k := range gcpkms.MasterKeysFromResourceIDString(strings.Join(gcpkmsKeys, ",")) {
+		for _, k := range gcpkms.MasterKeysFromResourceIDString(strings.Join(cRule.GCPKMS, ",")) {
 			keyGroup = append(keyGroup, k)
 		}
 		hckmsMasterKeys, err := hckms.NewMasterKeyFromKeyIDString(strings.Join(cRule.HCKms, ","))
@@ -586,22 +487,14 @@ func getKeyGroupsFromCreationRule(cRule *creationRule, kmsEncryptionContext map[
 		for _, k := range hckmsMasterKeys {
 			keyGroup = append(keyGroup, k)
 		}
-		azKeys, err := getKeysWithValidation(cRule.GetAzureKeyVaultKeys, "azure_keyvault")
-		if err != nil {
-			return nil, err
-		}
-		azureKeys, err := azkv.MasterKeysFromURLs(strings.Join(azKeys, ","))
+		azureKeys, err := azkv.MasterKeysFromURLs(strings.Join(cRule.AzureKeyVault, ","))
 		if err != nil {
 			return nil, err
 		}
 		for _, k := range azureKeys {
 			keyGroup = append(keyGroup, k)
 		}
-		vaultKeyUris, err := getKeysWithValidation(cRule.GetVaultURIs, "vault")
-		if err != nil {
-			return nil, err
-		}
-		vaultKeys, err := hcvault.NewMasterKeysFromURIs(strings.Join(vaultKeyUris, ","))
+		vaultKeys, err := hcvault.NewMasterKeysFromURIs(strings.Join(cRule.VaultURI, ","))
 		if err != nil {
 			return nil, err
 		}

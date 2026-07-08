@@ -1120,7 +1120,8 @@ directory to define which keys are used for which filename.
   It won't be automatically discovered under any other name. To use a differently named
   config file, pass the ``--config <path>`` option for it to be picked up. The legacy
   YAML config (``.sops.yaml`` / ``.sops.yml``) is no longer loaded; if one is found while
-  searching, SOPS warns and ignores it.
+  searching, SOPS warns and ignores it. To convert an existing YAML config, run
+  ``sops config migrate`` (see `Migrating a YAML config to PXF`_).
 
 Let's take an example:
 
@@ -1239,6 +1240,28 @@ Creating a new file with the right keys is now as simple as
 
 Note that the configuration file is ignored when KMS or PGP parameters are
 passed on the SOPS command line or in environment variables.
+
+Migrating a YAML config to PXF
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you have an existing legacy ``.sops.yaml`` config, ``sops config migrate``
+converts it to the equivalent ``.sops.pxf``:
+
+.. code:: sh
+
+    # print the converted config to stdout (defaults to ./.sops.yaml or ./.sops.yml)
+    $ sops config migrate
+
+    # convert a specific file and write .sops.pxf next to it
+    $ sops config migrate --in path/to/.sops.yaml --in-place
+
+    # or choose the output path explicitly
+    $ sops config migrate --in old.sops.yaml --out .sops.pxf
+
+The command warns about any fields that the YAML loader silently ignored (for
+example the historical ``hc_vault_uris`` and ``reencryption_rule`` typos) so you
+can fix them rather than lose them. It does not delete the source file; remove
+the old ``.sops.yaml`` yourself once you've verified the result.
 
 Specify a different GPG executable
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2176,7 +2199,8 @@ The file must be named ``.sops.pxf``,
 and SOPS will look for it in the current working directory and its parents,
 using the first ``.sops.pxf`` file found. The legacy YAML config
 (``.sops.yaml`` / ``.sops.yml``) is no longer loaded; SOPS warns and ignores it
-if it finds one while searching.
+if it finds one while searching. Convert an existing YAML config with
+``sops config migrate`` (see `Migrating a YAML config to PXF`_).
 
 A specific file can be set as the config file by passing the ``--config`` global option
 or setting the ``SOPS_CONFIG`` environment variable.
