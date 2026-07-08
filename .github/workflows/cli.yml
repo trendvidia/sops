@@ -45,6 +45,12 @@ jobs:
       - name: Ensure clean working tree
         run: git diff --exit-code
 
+      - name: Regenerate protobuf code
+        run: make generate
+
+      - name: Ensure generated code is up to date
+        run: git diff --exit-code || (echo "::error::Generated code is out of date. Run 'make generate' and commit the result." && exit 1)
+
       - name: Build
         run: go build -o sops-${{ github.sha }} -v ./cmd/sops
 
